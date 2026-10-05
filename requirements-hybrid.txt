@@ -1,0 +1,17 @@
+# Separate server environment specification. Nothing is installed by this file
+# or by the CODE ONLY implementation task; legacy requirements are unchanged.
+# SERVER_VALIDATION_REQUIRED: provision in a separate Linux/WSL environment.
+torch>=2.7
+numpy
+Pillow
+PyYAML
+# Existing Endo3R dependencies still come from requirements.txt; installing this
+# specification is NOT a substitute for verifying baseline import/checkpoints.
+# Optional efficient short attention: PyTorch compiled SDPA Flash preferred.
+# If required separately, official flash-attn>=2.2; exact server version must be
+# recorded after head_dim64 BF16 rectangular forward/backward validation.
+# Optional efficient long attention (DO NOT silently use another revision):
+# flash-linear-attention revision 9f38d24980c46d46bd38614e743cdacd21906578
+# package version 0.6.0; its CUDA environment requires Triton>=3.3, Torch>=2.7.
+# Explicitly provision FLA and Triton later; they are not mandatory imports for
+# legacy mode, CPU math_reference, or torch_reference development/tests.

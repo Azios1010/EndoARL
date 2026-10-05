@@ -552,19 +552,59 @@ class Endo3R(nn.Module):
                  dus3r_name="./checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth", 
                  use_feat=False, 
                  mem_pos_enc=False, 
-                 memory_dropout=0.15):
+                 memory_dropout=0.15,
+                 memory_config=None):
         super(Endo3R, self).__init__()
         # config
         self.use_feat = use_feat
         self.mem_pos_enc = mem_pos_enc
 
         # DUSt3R
+        if memory_config is not None and not os.path.isfile(dus3r_name):
+            raise FileNotFoundError(f'Configured architecture requires a local DUSt3R checkpoint: {dus3r_name}. '
+                                    'No model-hub download is performed in this path.')
         self.dust3r = AsymmetricCroCo3DStereo.from_pretrained(dus3r_name, landscape_only=True)
 
         # Memory encoder
         self.set_memory_encoder(enc_embed_dim=768 if use_feat else 1024, memory_dropout=memory_dropout) 
         self.set_attn_head()
+        # Optional architecture: default legacy construction/state_dict stays unchanged.
+        # No FlashAttention/FLA import is performed for the official legacy mode.
+        if memory_config is not None:
+            self.configure_memory(memory_config)
         
+
+    def configure_memory(self, memory_config):
+        from dust3r.memory.config import load_config
+        self.memory_config = load_config(memory_config)
+        config = self.memory_config
+        if config.memory.backend == 'legacy' and config.policy.long_write_policy == 'heuristic':
+            return
+        from dust3r.memory.policies import make_policy
+        from dust3r.memory.uncertainty import UncertaintyEstimator
+        actor = normalizer = None
+        if config.policy.long_write_policy == 'ppo':
+            from dust3r.rl.networks import Actor
+            from dust3r.rl.normalization import ObservationNormalizer
+            actor = Actor(config.rl.actor_state_dim, config.rl.actor_hidden)
+            normalizer = ObservationNormalizer()
+        self.long_write_policy = make_policy(config.policy.long_write_policy,
+            threshold=config.policy.heuristic_similarity, actor=actor, normalizer=normalizer)
+        if config.memory.backend == 'hybrid_flash_kda':
+            from dust3r.memory.hybrid import HybridMemory
+            from dust3r.memory.types import SharedNorms
+            self.hybrid_memory = HybridMemory(config.memory,
+                shared_norms=SharedNorms(self.norm_q, self.norm_k, self.norm_v))
+            self.hybrid_uncertainty = UncertaintyEstimator(config.uncertainty, config.checkpoints.raft)
+        else:
+            # The legacy policy adapter retains original uncertainty/pruning behavior.
+            # Disabled wrapper is only a runner dependency; it is never used to alter B0.
+            from dataclasses import replace
+            self.hybrid_uncertainty = UncertaintyEstimator(replace(config.uncertainty, enabled=False))
+
+    def make_online_runner(self, training=False, policy=None):
+        from dust3r.online.runner import create_online_runner
+        return create_online_runner(self, self.memory_config, training=training, policy=policy)
 
     def set_memory_encoder(self, enc_depth=6, enc_embed_dim=1024, out_dim=1024, enc_num_heads=16, 
                            mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6),
@@ -733,6 +773,11 @@ class Endo3R(nn.Module):
         return best_id, best_dec1, best_dec2, best_res1, best_res2, best_feat2, best_pos2, best_shape2, best_conf
     
     def forward(self, frames, return_memory=False, eval=False, uncertainty_check=True):
+        config = getattr(self, 'memory_config', None)
+        if config is not None and (config.memory.backend != 'legacy' or
+                                   config.policy.long_write_policy != 'heuristic'):
+            from dust3r.online.runner import run_episode
+            return run_episode(self, frames, config, return_memory=return_memory)
         if self.training:
             sp_mem = SpatialTempralMemory(self.norm_q, self.norm_k, self.norm_v, mem_dropout=self.mem_dropout, attn_thresh=0)
         else:
