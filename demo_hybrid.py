@@ -82,13 +82,14 @@ def load_inference_model(config, *, device='cpu', hybrid_checkpoint=None,
         from dust3r.rl.networks import Actor
         from dust3r.rl.normalization import ObservationNormalizer
         from dust3r.training.teacher import file_sha256
+        from dust3r.training.provenance import verify_actor_environment
         payload = torch.load(actor_checkpoint, map_location='cpu', weights_only=True)
         if payload.get('schema') != 'endo3r_ppo_write_v1' or payload.get('observation_schema') != 'actor30_v1':
             raise ValueError('Actor checkpoint schema/observation interface is incompatible.')
         if config.memory.backend == 'legacy' and payload.get('original_checkpoint_hashes', {}).get('endo3r') != hashes.get('endo3r'):
             raise ValueError('Legacy actor was trained with a different released Endo3R checkpoint.')
-        if hybrid_checkpoint and payload.get('environment_checkpoint_id') != file_sha256(hybrid_checkpoint):
-            raise ValueError('Actor was trained for a different frozen hybrid checkpoint.')
+        contract = verify_actor_environment(payload, config, hashes,
+                    file_sha256(hybrid_checkpoint) if hybrid_checkpoint else None)
         actor = Actor(30, config.rl.actor_hidden).to(device)
         actor.load_state_dict(payload['actor'], strict=True)
         normalizer = ObservationNormalizer().to(device)
@@ -96,6 +97,8 @@ def load_inference_model(config, *, device='cpu', hybrid_checkpoint=None,
         normalizer.freeze()
         actor.eval()
         model.long_write_policy = PPOWritePolicy(actor, normalizer=normalizer)
+        model.actor_environment_contract_sha256 = contract
+        model.actor_source_provenance = payload.get('source_provenance')
         # Reuse registered modules, change dispatch config only (no reinitialization).
         model.memory_config = config
     model.eval()

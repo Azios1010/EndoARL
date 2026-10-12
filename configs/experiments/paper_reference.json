@@ -1,0 +1,17 @@
+{
+  "schema": "endo3r_paper_reference_v1",
+  "source": "paper_reference_not_measured",
+  "experiment_id": "Endo3R-paper",
+  "citation_url": "https://arxiv.org/html/2504.03198v1",
+  "dataset": "SCARED test",
+  "reported_units": {"rmse": "unspecified_in_table", "sq_rel": "unspecified_in_table", "ate": "mm", "rpe_translation": "mm", "rpe_rotation": "degree", "fps": "frames/s"},
+  "depth_metrics": {"abs_rel": 0.124, "sq_rel": 0.227, "rmse": 1.209, "rmse_log": 0.135, "delta1": 0.839},
+  "pose_metrics": {"ate": 0.112, "rpe_rotation": 0.201, "rpe_translation": 0.228},
+  "timing": {"fps": 19.17},
+  "hardware": "unspecified_in_v1",
+  "notes": [
+    "Values transcribed from Endo3R arXiv v1 Tables1/2, not measured locally.",
+    "RMSE/SqRel units, FPS hardware/timing scope and trajectory alignment are insufficiently specified for direct numeric equivalence.",
+    "No speedup ratio against this FPS is calculated."
+  ]
+}

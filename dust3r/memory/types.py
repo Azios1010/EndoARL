@@ -1,6 +1,6 @@
 """Episode-owned state and small diagnostics, never model checkpoint buffers."""
 
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
 from typing import Optional, Tuple
 import weakref
 
@@ -62,6 +62,7 @@ class WriteConfidence:
     weights: Tensor
     uncertainty_stats: Tensor
     raft_called: bool = False
+    diagnostics: dict = field(default_factory=dict)
 
     @property
     def has_any_positive_patch(self) -> bool:

@@ -87,6 +87,24 @@ python eval.py --data_root EVAL_DATA_ROOT --data_type scared --ckpt_path ./check
 # Hamlyn
 python eval.py --data_root EVAL_DATA_ROOT --data_type hamlyn --ckpt_path ./checkpoints/endo3r.pth --resolution 320
 ```
+### Flash/KDA, Sampson and PPO experiment workflow
+
+The new local-to-server pipeline preserves the released legacy path and compares
+`legacy_official`, `hybrid_sampson` and `hybrid_ppo` on a verified SCARED manifest.
+See [SCARED experiment protocol](docs/SCARED_EXPERIMENT_PROTOCOL.md) for data
+contracts, training, metrics, server requirements and reproducible commands.
+The [benchmark preview](docs/benchmark_preview/benchmark.md) contains pending
+N/A rows and separately identified paper references, not measured results.
+
+```bash
+# Read-only command/config preview; no jobs, writes, installations or downloads.
+python tools/run_scared_study.py --stage all
+python -B -m unittest discover -s tests -v
+```
+
+Training entrypoints require explicit `--run-training`; the study executor
+requires `--server-run`. SCARED data and existing checkpoints stay on the server.
+
 # Acknowledgement
 We would like to thank the authors of [MonST3R](https://monst3r-project.github.io/files/monst3r_paper.pdf), [Spann3R](https://arxiv.org/abs/2408.16061), and [CUT3R](http://arxiv.org/abs/2501.12387) for their excellent work!
 

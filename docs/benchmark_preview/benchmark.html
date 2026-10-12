@@ -1,0 +1,70 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Endo3R benchmark</title><style>body{font:14px system-ui,sans-serif;margin:24px;color:#18202a}table{border-collapse:collapse;white-space:nowrap}th,td{padding:9px;border:1px solid #ccd3da;text-align:right}th:first-child,td:first-child{text-align:left}thead{background:#edf3f8}.scroll{overflow:auto}.banner{background:#fff3cc;padding:12px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f8;padding:12px}svg{width:100%;max-width:950px}details{margin:12px 0}</style><body><h1>Endo3R benchmark</h1><p class="banner">Benchmark artifacts; unavailable measurements are N/A.</p><div class="scroll"><table><thead><tr><th>Experiment</th><th>Source</th><th>Seeds</th><th>Status</th><th>AbsRel ↓</th><th>SqRel (m) ↓</th><th>RMSE (m) ↓</th><th>RMSE-log ↓</th><th>δ₁ ↑</th><th>ATE (mm) ↓</th><th>RPE-t (mm) ↓</th><th>RPE-r (°) ↓</th><th>FPS ↑</th><th>Decoded pair mean (ms) ↓</th><th>Decoded pair p50 (ms) ↓</th><th>Decoded pair p95 (ms) ↓</th><th>Amortized output mean (ms) ↓</th><th>Amortized output p50 (ms) ↓</th><th>Amortized output p95 (ms) ↓</th><th>Peak VRAM (MiB) ↓</th><th>WRITE rate ↓</th><th>RAFT rate ↓</th><th>KDA rate ↓</th><th>Actor act profile proxy (ms) ↓</th></tr></thead><tbody><tr><td>Endo3R-paper</td><td>paper_reference_not_measured</td><td>N/A</td><td>reference</td><td>0.124</td><td>N/A</td><td>N/A</td><td>0.135</td><td>0.839</td><td>N/A</td><td>N/A</td><td>N/A</td><td>19.17</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td></tr><tr><td>Endo3R released legacy</td><td>pending_server_run_not_measured</td><td>N/A</td><td>pending</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td></tr><tr><td>Flash/KDA + heuristic + Sampson</td><td>pending_server_run_not_measured</td><td>N/A</td><td>pending</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td></tr><tr><td>Flash/KDA + PPO + Sampson</td><td>pending_server_run_not_measured</td><td>N/A</td><td>pending</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td></tr></tbody></table></div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 400" role="img" aria-label="Quality vs throughput (paper reference excluded)"><rect width="100%" height="100%" fill="white"/><text x="24" y="28" font-family="sans-serif" font-size="17">Quality vs throughput (paper reference excluded)</text><text x="50" y="180" font-family="sans-serif">No complete paired quality/timing measurements supplied.</text></svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 400" role="img" aria-label="Quality vs GPU memory (paper reference excluded)"><rect width="100%" height="100%" fill="white"/><text x="24" y="28" font-family="sans-serif" font-size="17">Quality vs GPU memory (paper reference excluded)</text><text x="50" y="180" font-family="sans-serif">No complete paired quality/timing measurements supplied.</text></svg><section><h2>Published paper reference — not measured on this server</h2><table><thead><tr><th>Metric</th><th>Published value</th><th>Reported unit</th></tr></thead><tbody><tr><td>AbsRel</td><td>0.124</td><td>dimensionless</td></tr><tr><td>SqRel</td><td>0.227</td><td>unspecified_in_table</td></tr><tr><td>RMSE</td><td>1.209</td><td>unspecified_in_table</td></tr><tr><td>RMSE-log</td><td>0.135</td><td>dimensionless</td></tr><tr><td>δ₁</td><td>0.839</td><td>dimensionless</td></tr><tr><td>ATE</td><td>0.112</td><td>mm</td></tr><tr><td>RPE-t</td><td>0.228</td><td>mm</td></tr><tr><td>RPE-r</td><td>0.201</td><td>degree</td></tr><tr><td>FPS</td><td>19.17</td><td>frames/s; paper hardware/scope not established</td></tr></tbody></table><pre>{
+  &quot;experiment_id&quot;: &quot;Endo3R-paper&quot;,
+  &quot;source&quot;: &quot;paper_reference_not_measured&quot;,
+  &quot;citation_url&quot;: &quot;https://arxiv.org/html/2504.03198v1&quot;,
+  &quot;reported_units&quot;: {
+    &quot;rmse&quot;: &quot;unspecified_in_table&quot;,
+    &quot;sq_rel&quot;: &quot;unspecified_in_table&quot;,
+    &quot;ate&quot;: &quot;mm&quot;,
+    &quot;rpe_translation&quot;: &quot;mm&quot;,
+    &quot;rpe_rotation&quot;: &quot;degree&quot;,
+    &quot;fps&quot;: &quot;frames/s&quot;
+  },
+  &quot;depth_metrics&quot;: {
+    &quot;abs_rel&quot;: 0.124,
+    &quot;sq_rel&quot;: 0.227,
+    &quot;rmse&quot;: 1.209,
+    &quot;rmse_log&quot;: 0.135,
+    &quot;delta1&quot;: 0.839
+  },
+  &quot;pose_metrics&quot;: {
+    &quot;ate&quot;: 0.112,
+    &quot;rpe_rotation&quot;: 0.201,
+    &quot;rpe_translation&quot;: 0.228
+  },
+  &quot;timing&quot;: {
+    &quot;fps&quot;: 19.17
+  },
+  &quot;hardware&quot;: &quot;unspecified_in_v1&quot;,
+  &quot;notes&quot;: [
+    &quot;Values transcribed from Endo3R arXiv v1 Tables1/2, not measured locally.&quot;,
+    &quot;RMSE/SqRel units, FPS hardware/timing scope and trajectory alignment are insufficiently specified for direct numeric equivalence.&quot;,
+    &quot;No speedup ratio against this FPS is calculated.&quot;
+  ]
+}</pre><p>Published metric units remain as reported. No paper FPS speedup is calculated.</p></section><details><summary>Endo3R-paper provenance</summary><pre>{
+  &quot;identity&quot;: {},
+  &quot;config_sha256&quot;: [],
+  &quot;seed_normalized_config_sha256&quot;: null,
+  &quot;checkpoint_hashes_by_seed&quot;: {},
+  &quot;actual_backends&quot;: {},
+  &quot;timing_context&quot;: {},
+  &quot;failure_counts&quot;: {},
+  &quot;artifact_paths&quot;: []
+}</pre></details><details><summary>legacy_official provenance</summary><pre>{
+  &quot;identity&quot;: {},
+  &quot;config_sha256&quot;: [],
+  &quot;seed_normalized_config_sha256&quot;: null,
+  &quot;checkpoint_hashes_by_seed&quot;: {},
+  &quot;actual_backends&quot;: {},
+  &quot;timing_context&quot;: {},
+  &quot;failure_counts&quot;: {},
+  &quot;artifact_paths&quot;: []
+}</pre></details><details><summary>hybrid_sampson provenance</summary><pre>{
+  &quot;identity&quot;: {},
+  &quot;config_sha256&quot;: [],
+  &quot;seed_normalized_config_sha256&quot;: null,
+  &quot;checkpoint_hashes_by_seed&quot;: {},
+  &quot;actual_backends&quot;: {},
+  &quot;timing_context&quot;: {},
+  &quot;failure_counts&quot;: {},
+  &quot;artifact_paths&quot;: []
+}</pre></details><details><summary>hybrid_ppo provenance</summary><pre>{
+  &quot;identity&quot;: {},
+  &quot;config_sha256&quot;: [],
+  &quot;seed_normalized_config_sha256&quot;: null,
+  &quot;checkpoint_hashes_by_seed&quot;: {},
+  &quot;actual_backends&quot;: {},
+  &quot;timing_context&quot;: {},
+  &quot;failure_counts&quot;: {},
+  &quot;artifact_paths&quot;: []
+}</pre></details><ul><li>Paper numbers are reference-only; GPU/timing scope and unspecified metric units are not inferred.</li><li>Std is sample standard deviation across available seeds; single-seed std is N/A.</li><li>N/A is never interpreted as zero; every metric records measured_n.</li><li>Complete and incomplete quality results are labelled separately.</li><li>Only matching verified training.seed values are normalized across seeds; all other config fields remain fixed.</li><li>Decoded-pair latency includes the terminal pair&#x27;s two outputs; amortized output latency divides pair time by output count and is not observed frame-arrival latency.</li><li>Failed pose windows and incomplete timing mark rows incomplete and exclude them from quality/compute plots.</li><li>No FPS speedup is computed against the published paper.</li><li>No measured server results have been supplied; pending rows contain no measured metrics.</li></ul></body></html>

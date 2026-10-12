@@ -73,6 +73,9 @@ class MemoryConfig:
 class UncertaintyConfig:
     enabled: bool = True
     estimator: str = "raft"
+    metric: str = "geometry_3d"
+    sampson_sigma_px: float = 1.0
+    sampson_min_translation: float = 1e-6
     run_on: str = "write_long_only"
     reference: str = "last_successful_long_write"
     raft_iters: int = 20
@@ -101,6 +104,8 @@ class PolicyConfig:
 class TrainingConfig:
     entrypoint: str = "train_hybrid_memory.py"
     data_manifest: Optional[str] = None
+    seed: int = 0
+    shuffle_sequences: bool = True
     image_width: int = 320
     image_height: int = 256
     batch_size: int = 1
@@ -207,6 +212,10 @@ class HybridConfig:
         if not 1 <= self.policy.heuristic_recent_long_descriptors <= 4:
             raise ValueError("v1 heuristic retains 1..4 descriptors")
         u = self.uncertainty
+        if u.metric not in {"geometry_3d", "sampson"}:
+            raise ValueError("uncertainty.metric must be geometry_3d or sampson")
+        if u.sampson_sigma_px <= 0 or u.sampson_min_translation <= 0:
+            raise ValueError("Sampson pixel scale and minimum baseline must be positive")
         if (u.estimator != "raft" or u.run_on != "write_long_only" or
                 u.reference != "last_successful_long_write" or u.raft_dtype != "float32" or
                 u.raft_mixed_precision or not u.invalid_as_high_uncertainty or not u.reject_all_invalid_write):
@@ -216,6 +225,8 @@ class HybridConfig:
         if not 0 <= u.confidence_floor_on_valid <= 1:
             raise ValueError("confidence_floor_on_valid must be in [0,1]")
         t, r = self.training, self.rl
+        if t.seed < 0:
+            raise ValueError("training.seed must be nonnegative")
         if t.batch_size != 1 or min(t.image_height, t.image_width, t.tbptt_pairs, t.stride) <= 0:
             raise ValueError("v1 supports batch_size=1 and positive dimensions/TBPTT/stride")
         if t.sequence_raw_frames < 2 or t.tbptt_pairs > t.sequence_raw_frames - 1:

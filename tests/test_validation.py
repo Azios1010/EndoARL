@@ -64,6 +64,31 @@ class ValidationGateTests(unittest.TestCase):
                 certify_for_ppo(source, report, baseline, output)
             self.assertFalse(output.exists())
 
+    def test_matching_frame_count_is_not_matching_source_coverage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, output = Path(directory) / 'source.pt', Path(directory) / 'certified.pt'
+            torch.save(dict(schema=CHECKPOINT_SCHEMA, config={'memory': {'backend': 'hybrid_flash_kda'}}), source)
+            report, baseline = self.reports(source)
+            report.update(max_frames=64, subset_sha256='frames_a')
+            baseline.update(max_frames=64, subset_sha256='frames_b')
+            with self.assertRaisesRegex(ValueError, 'coverage mismatch'):
+                certify_for_ppo(source, report, baseline, output)
+            baseline['subset_sha256'] = 'frames_a'
+            baseline['max_frames'] = None
+            with self.assertRaisesRegex(ValueError, 'coverage mismatch'):
+                certify_for_ppo(source, report, baseline, output)
+            self.assertFalse(output.exists())
+
+    def test_initial_released_weights_must_match_baseline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, output = Path(directory) / 'source.pt', Path(directory) / 'certified.pt'
+            torch.save(dict(schema=CHECKPOINT_SCHEMA, config={'memory': {'backend': 'hybrid_flash_kda'}}), source)
+            report, baseline = self.reports(source)
+            report['original_checkpoint_hashes'] = {'dust3r': 'd', 'endo3r': 'other'}
+            baseline['original_checkpoint_hashes']['dust3r'] = 'd'
+            with self.assertRaisesRegex(ValueError, 'checkpoint mismatch'):
+                certify_for_ppo(source, report, baseline, output)
+
 
 if __name__ == '__main__':
     unittest.main()

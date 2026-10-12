@@ -1,0 +1,15 @@
+# Unchanged legacy attention/uncertainty. Original RAFT path requires CUDA:0
+# and checkpoints/raft-things.pth relative to the repository working directory.
+schema_version: 1
+baseline_identity: LEGACY_OFFICIAL
+memory:
+  backend: legacy
+policy:
+  long_write_policy: heuristic
+uncertainty:
+  enabled: true
+  metric: geometry_3d
+training:
+  image_width: 320
+  image_height: 256
+  stride: 1

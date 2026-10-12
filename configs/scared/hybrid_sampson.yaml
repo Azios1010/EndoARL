@@ -1,0 +1,27 @@
+# Main A experiment: novelty heuristic writes + Sampson WRITE confidence.
+# SERVER_VALIDATION_REQUIRED: sigma_px is provisional, never tune on datasets8/9.
+schema_version: 1
+baseline_identity: NEW_HYBRID
+memory:
+  backend: hybrid_flash_kda
+policy:
+  long_write_policy: heuristic
+  heuristic_similarity: 0.92
+uncertainty:
+  enabled: true
+  metric: sampson
+  sampson_sigma_px: 1.0
+  sampson_min_translation: 0.000001
+  raft_iters: 20
+training:
+  data_manifest: null
+  image_width: 320
+  image_height: 256
+  batch_size: 1
+  sequence_raw_frames: 9
+  tbptt_pairs: 4
+  stride: 1
+  seed: 0
+  shuffle_sequences: true
+  new_memory_dtype: bfloat16
+  lr_new: 0.0001

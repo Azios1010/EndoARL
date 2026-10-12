@@ -1,0 +1,527 @@
+{
+  "schema": "endo3r_benchmark_table_v1",
+  "schema_version": 1,
+  "measurement_count": 0,
+  "fixture_run_count": 0,
+  "rows": [
+    {
+      "experiment_id": "Endo3R-paper",
+      "source": "paper_reference_not_measured",
+      "seeds": [],
+      "seed_count": 0,
+      "status": "reference",
+      "metrics": {
+        "abs_rel": {
+          "mean": 0.124,
+          "std": null,
+          "measured_n": 0
+        },
+        "sq_rel_m": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rmse_m": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rmse_log": {
+          "mean": 0.135,
+          "std": null,
+          "measured_n": 0
+        },
+        "delta1": {
+          "mean": 0.839,
+          "std": null,
+          "measured_n": 0
+        },
+        "ate_mm": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rpe_translation_mm": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rpe_rotation_deg": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "fps": {
+          "mean": 19.17,
+          "std": null,
+          "measured_n": 0
+        },
+        "mean_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "p50_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "p95_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "amortized_output_mean_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "amortized_output_p50_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "amortized_output_p95_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "peak_vram_mib": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "write_rate": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "raft_call_rate": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "kda_update_rate": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "actor_mean_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        }
+      },
+      "identity": {},
+      "config_sha256": [],
+      "checkpoint_hashes_by_seed": {},
+      "seed_normalized_config_sha256": null,
+      "actual_backends": {},
+      "timing_context": {},
+      "failure_counts": {},
+      "artifact_paths": []
+    },
+    {
+      "experiment_id": "legacy_official",
+      "source": "pending_server_run_not_measured",
+      "seeds": [],
+      "seed_count": 0,
+      "status": "pending",
+      "metrics": {
+        "abs_rel": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "sq_rel_m": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rmse_m": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rmse_log": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "delta1": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "ate_mm": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rpe_translation_mm": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rpe_rotation_deg": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "fps": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "mean_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "p50_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "p95_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "amortized_output_mean_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "amortized_output_p50_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "amortized_output_p95_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "peak_vram_mib": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "write_rate": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "raft_call_rate": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "kda_update_rate": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "actor_mean_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        }
+      },
+      "identity": {},
+      "config_sha256": [],
+      "checkpoint_hashes_by_seed": {},
+      "seed_normalized_config_sha256": null,
+      "actual_backends": {},
+      "timing_context": {},
+      "failure_counts": {},
+      "artifact_paths": [],
+      "label": "Endo3R released legacy"
+    },
+    {
+      "experiment_id": "hybrid_sampson",
+      "source": "pending_server_run_not_measured",
+      "seeds": [],
+      "seed_count": 0,
+      "status": "pending",
+      "metrics": {
+        "abs_rel": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "sq_rel_m": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rmse_m": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rmse_log": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "delta1": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "ate_mm": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rpe_translation_mm": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rpe_rotation_deg": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "fps": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "mean_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "p50_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "p95_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "amortized_output_mean_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "amortized_output_p50_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "amortized_output_p95_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "peak_vram_mib": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "write_rate": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "raft_call_rate": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "kda_update_rate": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "actor_mean_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        }
+      },
+      "identity": {},
+      "config_sha256": [],
+      "checkpoint_hashes_by_seed": {},
+      "seed_normalized_config_sha256": null,
+      "actual_backends": {},
+      "timing_context": {},
+      "failure_counts": {},
+      "artifact_paths": [],
+      "label": "Flash/KDA + heuristic + Sampson"
+    },
+    {
+      "experiment_id": "hybrid_ppo",
+      "source": "pending_server_run_not_measured",
+      "seeds": [],
+      "seed_count": 0,
+      "status": "pending",
+      "metrics": {
+        "abs_rel": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "sq_rel_m": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rmse_m": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rmse_log": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "delta1": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "ate_mm": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rpe_translation_mm": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "rpe_rotation_deg": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "fps": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "mean_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "p50_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "p95_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "amortized_output_mean_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "amortized_output_p50_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "amortized_output_p95_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "peak_vram_mib": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "write_rate": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "raft_call_rate": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "kda_update_rate": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        },
+        "actor_mean_latency_ms": {
+          "mean": null,
+          "std": null,
+          "measured_n": 0
+        }
+      },
+      "identity": {},
+      "config_sha256": [],
+      "checkpoint_hashes_by_seed": {},
+      "seed_normalized_config_sha256": null,
+      "actual_backends": {},
+      "timing_context": {},
+      "failure_counts": {},
+      "artifact_paths": [],
+      "label": "Flash/KDA + PPO + Sampson"
+    }
+  ],
+  "paper_reference": {
+    "schema": "endo3r_paper_reference_v1",
+    "source": "paper_reference_not_measured",
+    "experiment_id": "Endo3R-paper",
+    "citation_url": "https://arxiv.org/html/2504.03198v1",
+    "dataset": "SCARED test",
+    "reported_units": {
+      "rmse": "unspecified_in_table",
+      "sq_rel": "unspecified_in_table",
+      "ate": "mm",
+      "rpe_translation": "mm",
+      "rpe_rotation": "degree",
+      "fps": "frames/s"
+    },
+    "depth_metrics": {
+      "abs_rel": 0.124,
+      "sq_rel": 0.227,
+      "rmse": 1.209,
+      "rmse_log": 0.135,
+      "delta1": 0.839
+    },
+    "pose_metrics": {
+      "ate": 0.112,
+      "rpe_rotation": 0.201,
+      "rpe_translation": 0.228
+    },
+    "timing": {
+      "fps": 19.17
+    },
+    "hardware": "unspecified_in_v1",
+    "notes": [
+      "Values transcribed from Endo3R arXiv v1 Tables1/2, not measured locally.",
+      "RMSE/SqRel units, FPS hardware/timing scope and trajectory alignment are insufficiently specified for direct numeric equivalence.",
+      "No speedup ratio against this FPS is calculated."
+    ]
+  },
+  "speedup_against_paper": null,
+  "notes": [
+    "Paper numbers are reference-only; GPU/timing scope and unspecified metric units are not inferred.",
+    "Std is sample standard deviation across available seeds; single-seed std is N/A.",
+    "N/A is never interpreted as zero; every metric records measured_n.",
+    "Complete and incomplete quality results are labelled separately.",
+    "Only matching verified training.seed values are normalized across seeds; all other config fields remain fixed.",
+    "Decoded-pair latency includes the terminal pair's two outputs; amortized output latency divides pair time by output count and is not observed frame-arrival latency.",
+    "Failed pose windows and incomplete timing mark rows incomplete and exclude them from quality/compute plots.",
+    "No FPS speedup is computed against the published paper.",
+    "No measured server results have been supplied; pending rows contain no measured metrics."
+  ]
+}

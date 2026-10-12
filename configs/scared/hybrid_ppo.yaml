@@ -1,0 +1,23 @@
+# Main AR experiment: SAME trained attention/Sampson gates, PPO chooses WRITE.
+schema_version: 1
+baseline_identity: NEW_HYBRID
+memory:
+  backend: hybrid_flash_kda
+policy:
+  long_write_policy: ppo
+uncertainty:
+  enabled: true
+  metric: sampson
+  sampson_sigma_px: 1.0
+  sampson_min_translation: 0.000001
+  raft_iters: 20
+training:
+  data_manifest: null
+  image_width: 320
+  image_height: 256
+  stride: 1
+  seed: 0
+rl:
+  cost_calibration_path: null
+  frozen_environment: true
+  reward_mode: dense_gt

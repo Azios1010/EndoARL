@@ -4,6 +4,7 @@ SERVER_VALIDATION_REQUIRED: no server kernel is imported/built by the default
 readiness command. --reference exercises pure PyTorch on CPU only.
 """
 import argparse
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -13,14 +14,36 @@ if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
+def kernel_config_sha256(config):
+    """Kernel math/layout/dtype contract; actor, RAFT, paths and seed excluded.
+
+    Hybrid heuristic and PPO can share this proof because the probe exercises
+    their identical memory modules, not reconstruction/uncertainty/policy code.
+    """
+    raw = config.to_dict() if hasattr(config, 'to_dict') else config
+    training = raw.get('training', {})
+    contract = {'memory': raw.get('memory', {}),
+                'precision': {key: training.get(key) for key in
+                              ('new_memory_dtype', 'pretrained_compute_dtype')}}
+    return hashlib.sha256(json.dumps(contract, sort_keys=True, separators=(',', ':'),
+                                     allow_nan=False).encode('utf-8')).hexdigest()
+
+
 def probe(config, *, reference=False, server_kernels=False, device='cpu'):
     import torch
     from dust3r.memory.config import FLA_REVISION, load_config
-    report = {'torch': torch.__version__, 'cuda_build': torch.version.cuda,
+    requested = config.to_dict()
+    requested_hash = hashlib.sha256(json.dumps(requested, sort_keys=True, separators=(',', ':'),
+                                               allow_nan=False).encode('utf-8')).hexdigest()
+    report = {'torch': str(torch.__version__), 'cuda_build': torch.version.cuda,
               'fla_present': importlib.util.find_spec('fla') is not None,
               'flash_attn_present': importlib.util.find_spec('flash_attn') is not None,
               'triton_present': importlib.util.find_spec('triton') is not None,
-              'expected_fla_revision': FLA_REVISION, 'SERVER_VALIDATION_REQUIRED': True}
+              'expected_fla_revision': FLA_REVISION, 'SERVER_VALIDATION_REQUIRED': True,
+              'requested_config_sha256': requested_hash,
+              'kernel_config_sha256': kernel_config_sha256(requested),
+              'kernel_contract_scope': 'memory_config_and_memory_pretrained_activation_dtypes_only',
+              'requested_device': str(device), 'device': str(device)}
     if reference and server_kernels:
         raise ValueError('Choose explicit CPU reference or server kernels, not both.')
     if not (reference or server_kernels):
@@ -35,6 +58,13 @@ def probe(config, *, reference=False, server_kernels=False, device='cpu'):
     elif not device.startswith('cuda'):
         raise ValueError('--server-kernels requires an explicit CUDA device.')
     config = load_config(raw)
+    report['device'] = str(device)
+    report['effective_probe_config_sha256'] = hashlib.sha256(json.dumps(
+        config.to_dict(), sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')).hexdigest()
+    dtype = torch.float32 if reference else getattr(torch, config.training.new_memory_dtype)
+    if server_kernels and dtype not in {torch.float16, torch.bfloat16}:
+        raise ValueError('Flash server conformance requires configured new_memory_dtype=float16 or bfloat16; '
+                         'FP32 math reference does not prove the requested efficient backend.')
     from dust3r.memory.hybrid import HybridMemory
     from dust3r.memory.types import MemoryCandidate, WriteConfidence
     memory = HybridMemory(config.memory).to(device)
@@ -43,7 +73,6 @@ def probe(config, *, reference=False, server_kernels=False, device='cpu'):
     key = torch.randn(1, 4, d, device=device)
     value = torch.randn_like(key)
     query = torch.randn_like(key)
-    dtype = torch.float32 if reference else torch.bfloat16
     with torch.autocast(device_type=torch.device(device).type, dtype=dtype, enabled=not reference):
         state = memory.append_short(key, value, None, state)
         confidence = WriteConfidence(torch.ones(1, 4, 1, device=device), torch.zeros(1, 3, device=device))

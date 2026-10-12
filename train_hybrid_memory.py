@@ -13,12 +13,17 @@ def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="configs/hybrid_memory.yaml")
     parser.add_argument("--manifest", help="Override strict local GT manifest path")
-    parser.add_argument("--dry-run", action="store_true", help="Validate config/requirements only; no optimization")
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--log-jsonl", help="Append actual training records; never writes during dry-run")
+    execution = parser.add_mutually_exclusive_group()
+    execution.add_argument("--dry-run", action="store_true", help="Validate config/requirements only; no optimization")
+    execution.add_argument("--run-training", action="store_true", help="Explicit server opt-in to supervised optimization")
     parser.add_argument("--validate-data", action="store_true", help="Read and validate all local GT arrays")
     parser.add_argument("--validate-modules", action="store_true", help="Construct standalone memory, without Endo3R checkpoints")
     parser.add_argument("--reference", action="store_true", help="Explicit CPU correctness backends; never advertised as efficient")
     parser.add_argument("--stage", choices=("t1", "t2", "r1_supervised"), default="t1")
     parser.add_argument('--resume-checkpoint', help='Existing hybrid weights; required for T2/R1 adaptation')
+    parser.add_argument('--resume-state', action='store_true', help='Restore optimizer/scheduler/scaler/RNG in same stage; restart from a fresh clip')
     parser.add_argument("--unfreeze-decoder", action="store_true")
     parser.add_argument("--unfreeze-heads", action="store_true")
     parser.add_argument("--device", default="cpu")
@@ -33,6 +38,7 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    args.dry_run = not args.run_training
     from dust3r.memory.config import load_config
     from dust3r.training.hybrid_trainer import (primitive_config, config_value, validate_required_paths,
                                                configure_trainable_parameters, build_optimizer_groups,
@@ -46,12 +52,16 @@ def main(argv=None):
         raw["uncertainty"]["enabled"] = False
     if args.manifest:
         raw["training"]["data_manifest"] = args.manifest
+    if args.seed is not None:
+        raw["training"]["seed"] = args.seed
     config = load_config(raw)
     if config_value(config.memory, "backend") != "hybrid_flash_kda":
         raise ValueError("Explicit hybrid training requires memory.backend=hybrid_flash_kda; legacy training stays untouched")
     if config_value(config.policy, "long_write_policy") == "ppo":
         raise ValueError("Supervised attention training must disable PPO and use a deterministic write policy")
     requirements = validate_required_paths(config)
+    if args.resume_state and not args.resume_checkpoint:
+        raise ValueError("--resume-state requires --resume-checkpoint")
     if args.stage != 't1' and not args.resume_checkpoint:
         requirements.append('T2/R1 adaptation requires --resume-checkpoint from a trained hybrid stage')
     if args.resume_checkpoint and not Path(args.resume_checkpoint).is_file():
@@ -59,6 +69,7 @@ def main(argv=None):
     report = {"dry_run": args.dry_run, "config_valid": True,
               "backend": {"short": config.memory.short.backend, "long": config.memory.long.backend},
               "stage": args.stage, "requirements_ready": not requirements, "blocking_requirements": requirements,
+              "seed": config.training.seed, "shuffle_sequences": config.training.shuffle_sequences,
               "no_downloads": True, "no_installations": True,
               "server_validation": "SERVER_VALIDATION_REQUIRED: real kernel/model gradients, GT provenance, training fit"}
     teacher_metadata = None
@@ -100,7 +111,9 @@ def main(argv=None):
     if args.total_steps < 1 or args.epochs < 1:
         raise ValueError("Explicit positive --total-steps and --epochs are required")
     from dust3r.training.hybrid_trainer import HybridTrainer, load_initialized_model
+    from dust3r.training.reproducibility import seed_everything, sample_order, append_jsonl
     from dust3r.training.sequence_dataset import SequenceDataset
+    seed_everything(config.training.seed)
     model, hashes = load_initialized_model(config, args.device, args.trusted_checkpoints)
     if args.resume_checkpoint:
         from dust3r.training.hybrid_trainer import load_training_checkpoint
@@ -123,12 +136,24 @@ def main(argv=None):
             return TeacherTraceCache(args.teacher_cache_dir, TeacherTraceMetadata(**metadata))
     trainer = HybridTrainer(model, runner, config, stage=args.stage, total_steps=args.total_steps,
                             teacher_cache_factory=teacher_factory)
+    if args.resume_state:
+        payload = load_training_checkpoint(args.resume_checkpoint, model)
+        if payload.get('stage') != args.stage:
+            raise ValueError("Exact resume requires the same training stage; use weights-only stage adaptation otherwise")
+        load_training_checkpoint(args.resume_checkpoint, model, optimizer=trainer.optimizer,
+                                 scheduler=trainer.scheduler, scaler=trainer.scaler, restore_rng=True)
+        trainer.global_step = int(payload['global_step'])
+        if trainer.global_step >= args.total_steps:
+            raise ValueError("Resume step already meets --total-steps; increase the explicit total budget")
     print(json.dumps({**report, "parameter_status": status,
                       "optimizer_groups": optimizer_group_summary(trainer.optimizer.param_groups)}, indent=2))
     for epoch in range(args.epochs):
-        for sample_index in range(len(dataset)):
+        for sample_index in sample_order(len(dataset), config.training.seed, epoch,
+                                        config.training.shuffle_sequences):
             logs = trainer.train_sequence(dataset[sample_index])
-            print(json.dumps({"epoch": epoch, "sample": sample_index, "windows": logs}))
+            record = {"epoch": epoch, "sample": sample_index, "seed": config.training.seed, "windows": logs}
+            print(json.dumps(record))
+            append_jsonl(args.log_jsonl, record)
             if trainer.global_step >= args.total_steps:
                 break
         if trainer.global_step >= args.total_steps:

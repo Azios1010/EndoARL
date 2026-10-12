@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "notes": "SERVER_VALIDATION_REQUIRED: inspect the actual release and replace all fields before enabling verification. No dataset is included.",
+  "defaults": {
+    "frame_alignment_verified": false,
+    "pose": {"verified": false, "convention": "REQUIRED_camera_to_world_OR_world_to_camera", "translation_units": "REQUIRED_m_OR_mm", "camera_axes": "opencv"},
+    "calibration": {"verified": false, "rgb_rectified": false, "gt_rectified": false, "pixel_alignment_verified": false, "source": "REQUIRED", "alignment_source": "REQUIRED", "distortion": []},
+    "geometry": {"verified": false, "units": "REQUIRED_m_OR_mm", "space": "camera", "source": "REQUIRED_structured_light_OR_kinematics_warped", "valid_mask_rule": "camera_xyz_positive_z_finite"}
+  },
+  "patterns": {
+    "sequence_glob": "dataset_*/keyframe_*",
+    "dataset_regex": "dataset_(\\d+)",
+    "index_regex": "(\\d+)\\.[^.]+$",
+    "patient_ids": {"1": "REQUIRED_VERIFIED_PATIENT_1", "2": "REQUIRED_VERIFIED_PATIENT_2", "3": "REQUIRED_VERIFIED_PATIENT_3", "4": "REQUIRED_VERIFIED_PATIENT_4", "5": "REQUIRED_VERIFIED_PATIENT_5", "6": "REQUIRED_VERIFIED_PATIENT_6", "7": "REQUIRED_VERIFIED_PATIENT_7", "8": "REQUIRED_VERIFIED_PATIENT_8", "9": "REQUIRED_VERIFIED_PATIENT_9"},
+    "rgb_glob": "data/left_rectified/*.png",
+    "target_type": "pointmap",
+    "target_glob": "data/scene_points*.tiff",
+    "metadata_glob": "data/frame_data*.json",
+    "intrinsics_field": "REPLACE_WITH_VERIFIED_LEFT_RECTIFIED_INTRINSICS_FIELD",
+    "pose_field": "REPLACE_WITH_VERIFIED_CAMERA_TRANSFORM_FIELD"
+  }
+}

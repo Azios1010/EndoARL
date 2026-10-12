@@ -53,10 +53,20 @@ def certify_for_ppo(checkpoint, hybrid_report, baseline_report, output, toleranc
     for field in ('split', 'manifest_sha256', 'image_hw', 'scale_protocol'):
         if not hybrid_report.get(field) or hybrid_report.get(field) != baseline_report.get(field):
             raise ValueError(f'Evaluation protocol mismatch or missing {field}')
+    for field in ('max_frames', 'subset_sha256'):
+        if field in hybrid_report or field in baseline_report:
+            if field not in hybrid_report or field not in baseline_report or hybrid_report[field] != baseline_report[field]:
+                raise ValueError(f'Evaluation coverage mismatch: {field}')
     if hybrid_report.get('hybrid_checkpoint_sha256') != file_sha256(checkpoint):
         raise ValueError('Hybrid report was not produced by this checkpoint')
     if not baseline_report.get('original_checkpoint_hashes', {}).get('endo3r'):
         raise ValueError('Official baseline must identify its released checkpoint')
+    if hybrid_report.get('original_checkpoint_hashes'):
+        for name in ('dust3r', 'endo3r'):
+            current = hybrid_report['original_checkpoint_hashes'].get(name)
+            reference = baseline_report['original_checkpoint_hashes'].get(name)
+            if not current or current != reference:
+                raise ValueError(f'Initial released checkpoint mismatch: {name}')
     actual = hybrid_report.get('actual_backends', {})
     if actual.get('short') not in {'sdpa_flash', 'flash_attn'} or not str(actual.get('long', '')).startswith('fla_kda_'):
         raise ValueError('SERVER_VALIDATION_REQUIRED: actual Flash and FLA kernels must be validated before PPO')

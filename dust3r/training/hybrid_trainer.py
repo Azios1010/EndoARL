@@ -264,11 +264,14 @@ def save_training_checkpoint(path, model, config, optimizer=None, scheduler=None
     forbidden = ("last_long_reference", "short_raw_", "kda_state", "mem_attn", "mem_count")
     if any(any(word in key for word in forbidden) for key in model_state):
         raise ValueError("Patient/episodic memory must not be saved as model weights")
-    payload = {"schema": CHECKPOINT_SCHEMA, "schema_version": 1, "source_commit": SOURCE_COMMIT,
+    from .provenance import capture_rng_state, source_provenance
+    provenance = source_provenance()
+    payload = {"schema": CHECKPOINT_SCHEMA, "schema_version": 1, "source_commit": provenance['git_commit'],
+               "audited_legacy_commit": SOURCE_COMMIT, "source_provenance": provenance,
                "config": primitive_config(config), "model": model_state, "stage": stage,
                "global_step": global_step, "original_checkpoint_hashes": original_checkpoint_hashes or {},
                "external_revisions": runtime_revisions(), "observation_schema": "actor30_v1",
-               "validation_summary": validation_summary or {}, "rng": {"torch": torch.get_rng_state(), "python": random.getstate()},
+               "validation_summary": validation_summary or {}, "rng": capture_rng_state(),
                "optimizer": None if optimizer is None else optimizer.state_dict(),
                "scheduler": None if scheduler is None else scheduler.state_dict(),
                "scaler": None if scaler is None else scaler.state_dict()}
@@ -294,8 +297,8 @@ def load_training_checkpoint(path, model, expected_backend="hybrid_flash_kda", o
     if scaler is not None and payload.get('scaler') is not None:
         scaler.load_state_dict(payload['scaler'])
     if restore_rng:
-        torch.set_rng_state(payload["rng"]["torch"])
-        random.setstate(payload["rng"]["python"])
+        from .provenance import restore_rng_state
+        restore_rng_state(payload['rng'])
     return payload
 
 

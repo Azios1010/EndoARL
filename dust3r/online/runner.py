@@ -89,6 +89,8 @@ class OnlineRunner:
         self.last_decision = None
         if hasattr(self.policy, 'reset'):
             self.policy.reset()
+        if hasattr(self.uncertainty, 'reset'):
+            self.uncertainty.reset()
         return self
 
     def _memory_autocast(self, device):
@@ -254,6 +256,8 @@ class OnlineRunner:
                 self.state.write_attempt_count += 1
                 had_long = self.state.has_long_memory
                 confidence = self.uncertainty.estimate(pair.candidate, self._reference(), self.patch_size)
+                info['uncertainty_metric'] = self.config.uncertainty.metric
+                info['uncertainty_diagnostics'] = confidence.diagnostics
                 info['raft_called'] = confidence.raft_called
                 info['geometry_called'] = had_long and self.uncertainty.enabled
                 self.state.raft_call_count += int(confidence.raft_called)

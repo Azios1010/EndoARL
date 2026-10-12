@@ -89,6 +89,7 @@ def main(argv=None):
     parser.add_argument('--warmup-frames', type=int, default=3)
     parser.add_argument('--server-run', action='store_true')
     parser.add_argument('--output')
+    parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args(argv)
     if not args.server_run:
         print(json.dumps({'dry_run': True, 'SERVER_VALIDATION_REQUIRED': True,
@@ -101,7 +102,11 @@ def main(argv=None):
     from demo_hybrid import prepare_config, load_frames, load_inference_model
     from dust3r.training.hybrid_trainer import move_tensors
     config = prepare_config(args.config)
-    model, _ = load_inference_model(config, device=args.device, hybrid_checkpoint=args.hybrid_checkpoint,
+    from dust3r.training.reproducibility import seed_everything
+    from dust3r.experiments.benchmark import runtime_metadata
+    from dust3r.training.teacher import file_sha256
+    seed_everything(args.seed)
+    model, checkpoint_hashes = load_inference_model(config, device=args.device, hybrid_checkpoint=args.hybrid_checkpoint,
                                    actor_checkpoint=args.actor_checkpoint, trusted_checkpoints=args.trusted_checkpoints)
     frames = [move_tensors(frame, args.device) for frame in load_frames(args.input,
               (config.training.image_height, config.training.image_width), args.num_frames)]
@@ -152,6 +157,18 @@ def main(argv=None):
               'write_count': getattr(state, 'write_count', None), 'raft_calls': getattr(state, 'raft_call_count', None),
               'kda_state_bytes': getattr(state, 'kda_state', torch.empty(0)).numel() * 4,
               'output_retention': 'all predictions on device, matched to compatibility forward'}
+    report.update(schema='endo3r_component_profile_v1', hardware=runtime_metadata(args.device),
+                  original_checkpoint_hashes=checkpoint_hashes, seed=args.seed,
+                  hybrid_checkpoint_sha256=file_sha256(args.hybrid_checkpoint) if args.hybrid_checkpoint else None,
+                  actor_checkpoint_sha256=file_sha256(args.actor_checkpoint) if args.actor_checkpoint else None,
+                  actual_backends={'short': memory.short.last_backend if memory is not None else 'legacy_dense',
+                                   'long': memory.long.adapter.last_backend if memory is not None else 'legacy_dense'},
+                  timing_scope='synchronized_exclusive_components_not_headline_throughput',
+                  component_operations={'policy': 'LongWritePolicy.act'},
+                  image_hw=[config.training.image_height, config.training.image_width])
+    from dust3r.training.provenance import source_provenance, runtime_backend_provenance
+    report['source_provenance'] = source_provenance()
+    report['runtime_backend_provenance'] = runtime_backend_provenance(model)
     latencies = sorted(profiler.pair_latencies)
     report.update(total_sequence_ms=total_ms, fps_input_frames=len(frames) * 1000 / total_ms,
                   average_pair_ms=statistics.mean(latencies) if latencies else None,

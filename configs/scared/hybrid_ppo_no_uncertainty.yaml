@@ -1,0 +1,11 @@
+# Optional separate ablation; requires its OWN controller/environment contract.
+schema_version: 1
+baseline_identity: NEW_HYBRID
+policy:
+  long_write_policy: ppo
+uncertainty:
+  enabled: false
+  metric: sampson
+rl:
+  reward_raft_weight: 0.0
+  cost_calibration_path: null

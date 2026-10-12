@@ -13,11 +13,12 @@ from tests.hybrid_helpers import TinyEndoModel, frames, make_runner
 
 
 ROOT = Path(__file__).resolve().parents[1]
+AUDITED_LEGACY_COMMIT = '8145c8e5535d2111974561e7d1cc06f1d008fe5e'
 
 
 def source_trees():
     current = ast.parse((ROOT / 'dust3r/model.py').read_text(encoding='utf-8'))
-    original = ast.parse(subprocess.run(['git', 'show', 'HEAD:dust3r/model.py'], cwd=ROOT,
+    original = ast.parse(subprocess.run(['git', 'show', AUDITED_LEGACY_COMMIT + ':dust3r/model.py'], cwd=ROOT,
                         check=True, capture_output=True, text=True).stdout)
     return current, original
 
@@ -74,6 +75,8 @@ class LegacyDispatchTests(unittest.TestCase):
         payload = dict(schema='endo3r_ppo_write_v1', observation_schema='actor30_v1',
                        actor=Actor().state_dict(), normalizer=ObservationNormalizer().state_dict(),
                        original_checkpoint_hashes={})
+        from dust3r.training.provenance import environment_contract_sha256
+        payload['environment_contract_sha256'] = environment_contract_sha256(config, {}, None)
         with patch('pathlib.Path.is_file', return_value=True), \
              patch('dust3r.training.hybrid_trainer.load_initialized_model', side_effect=initialize), \
              patch('torch.load', return_value=payload):

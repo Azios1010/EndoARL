@@ -1,0 +1,28 @@
+{
+  "schema": "endo3r_scared_study_v1",
+  "dataset": "SCARED",
+  "train_datasets": [1, 2, 3, 4, 5, 6],
+  "validation_datasets": [7],
+  "test_datasets": [8, 9],
+  "seeds": [0, 1, 2],
+  "image_hw": [256, 320],
+  "stride": 1,
+  "attention_steps": 1000,
+  "attention_epochs": 1,
+  "ppo_updates": 1,
+  "benchmark_repeats": 3,
+  "warmup_frames": 4,
+  "certification_max_frames": 64,
+  "paper_reference": "configs/experiments/paper_reference.json",
+  "experiments": [
+    {"id": "legacy_official", "label": "Endo3R released legacy", "config": "configs/scared/legacy_official.yaml", "kind": "legacy"},
+    {"id": "hybrid_sampson", "label": "Flash/KDA + heuristic + Sampson", "config": "configs/scared/hybrid_sampson.yaml", "kind": "hybrid"},
+    {"id": "hybrid_ppo", "label": "Flash/KDA + PPO + Sampson", "config": "configs/scared/hybrid_ppo.yaml", "kind": "ppo"}
+  ],
+  "notes": [
+    "Step/update budgets are smoke defaults, not a selected final training recipe.",
+    "Both hybrid branches use exactly the same certified attention checkpoint per seed.",
+    "No tuning or PPO on test datasets8/9; validation dataset7 is an explicit held-out proposal.",
+    "Published paper values are reference rows, not rerun measurements."
+  ]
+}
