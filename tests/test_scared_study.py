@@ -98,7 +98,7 @@ class StudyTests(unittest.TestCase):
             command = StudyCommand('fit', 0, 'synthetic_guard_only',
                 ['python', str(REPOSITORY / 'train_hybrid_memory.py'), '--config', str(config)],
                 required_files=[str(config), str(proof)])
-            plan = StudyPlan(REPOSITORY, root / 'output', {}, {str(config): old},
+            plan = StudyPlan(REPOSITORY, root / 'output', {'attention_steps': 1, 'attention_epochs': 1}, {str(config): old},
                              [command], ('fit',), 'cuda:0', None, [])
             with patch('dust3r.experiments.study.subprocess.run') as run:
                 with self.assertRaisesRegex(ValueError, 'materialized command config'):
@@ -112,7 +112,8 @@ class StudyTests(unittest.TestCase):
                            ("dust3r_checkpoint", "endo3r_checkpoint", "raft_checkpoint")}
         plan = plan_study(STUDY, output_root=root / "output", stages=(stage,), seeds=[0],
                           manifest=manifest, profile_input=profile_input,
-                          cost_calibration=root / "SYNTHETIC_costs.json", **checkpoint_args)
+                          cost_calibration=root / "SYNTHETIC_costs.json", attention_steps=1,
+                          attention_epochs=1, ppo_updates=1, **checkpoint_args)
         materialize_configs(plan)
         produced = set()
         for command in plan.commands:
@@ -195,11 +196,63 @@ class StudyTests(unittest.TestCase):
 
     def test_missing_prerequisites_prevent_any_subprocess(self):
         with tempfile.TemporaryDirectory() as directory:
-            plan = plan_study(STUDY, output_root=directory, stages=("ppo",), seeds=[0])
+            plan = plan_study(STUDY, output_root=directory, stages=("ppo",), seeds=[0], ppo_updates=1)
             with patch("dust3r.experiments.study.subprocess.run") as subprocess_run:
                 with self.assertRaises(FileNotFoundError):
                     execute_plan(plan)
                 self.assertFalse(subprocess_run.called)
+
+    def test_unselected_training_budgets_are_reviewable_but_cannot_execute(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plan = plan_study(STUDY, output_root=directory, stages=('fit', 'ppo'), seeds=[0])
+            report = plan.to_dict()
+            self.assertEqual(set(report['missing_training_budgets']), {'attention_steps', 'attention_epochs', 'ppo_updates'})
+            self.assertTrue(all(v is None for v in report['training_budgets'].values()))
+            self.assertIn('<ATTENTION_STEPS_REQUIRED>', plan.commands[0].argv)
+            with patch('dust3r.experiments.study.subprocess.run') as run:
+                with self.assertRaisesRegex(ValueError, 'Training budget is unselected'):
+                    execute_plan(plan)
+                run.assert_not_called()
+            selected = plan_study(STUDY, output_root=directory, stages=('fit', 'ppo'), seeds=[0],
+                                  attention_steps=23, attention_epochs=2, ppo_updates=5)
+            fit, ppo = selected.commands
+            self.assertEqual(fit.argv[fit.argv.index('--total-steps') + 1], '23')
+            self.assertEqual(fit.argv[fit.argv.index('--epochs') + 1], '2')
+            self.assertEqual(ppo.argv[ppo.argv.index('--updates') + 1], '5')
+            self.assertEqual(selected.to_dict()['missing_training_budgets'], [])
+            with self.assertRaisesRegex(ValueError, 'positive integer'):
+                plan_study(STUDY, stages=('fit',), attention_steps=0)
+
+    def test_primary_comparison_rejects_uncertainty_or_attention_drift(self):
+        from dust3r.memory.config import load_config
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            study = json.loads(STUDY.read_text())
+            for e in study['experiments']:
+                e['config'] = str(REPOSITORY / e['config'])
+            ppo = next(e for e in study['experiments'] if e['kind'] == 'ppo')
+            original = load_config(ppo['config']).to_dict()
+            config = root / 'ppo.json'
+            ppo['config'] = str(config)
+            path = root / 'study.json'
+            path.write_text(json.dumps(study))
+            for section, key, value in [('uncertainty', 'metric', 'geometry_3d'),
+                                        ('uncertainty', 'sampson_sigma_px', 2.0),
+                                        ('training', 'new_memory_dtype', 'float16')]:
+                changed = json.loads(json.dumps(original))
+                changed[section][key] = value
+                config.write_text(json.dumps(changed))
+                with self.subTest(section=section, key=key):
+                    with self.assertRaisesRegex(ValueError, 'may differ only in long_write_policy'):
+                        plan_study(path, stages=('evaluate',), seeds=[0])
+            changed = json.loads(json.dumps(original))
+            changed['memory']['short']['max_frames'] = 3
+            config.write_text(json.dumps(changed))
+            with self.assertRaisesRegex(ValueError, 'may differ only in long_write_policy'):
+                plan_study(path, stages=('benchmark',), seeds=[0])
+            config.write_text(json.dumps(original))
+            plan = plan_study(path, stages=('evaluate',), seeds=[0])
+            self.assertEqual(len(plan.commands), 3)
 
     def test_official_legacy_raft_remains_explicit_fixed_path(self):
         with tempfile.TemporaryDirectory() as directory:

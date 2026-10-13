@@ -1,5 +1,7 @@
 # Unchanged legacy attention/uncertainty. Original RAFT path requires CUDA:0
 # and checkpoints/raft-things.pth relative to the repository working directory.
+# Paper describes Sampson, but released uncertainty uses geometry_3d.
+# Preserve released behavior; published paper numbers are separate references.
 schema_version: 1
 baseline_identity: LEGACY_OFFICIAL
 memory:

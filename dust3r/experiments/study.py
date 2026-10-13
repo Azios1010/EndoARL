@@ -15,6 +15,7 @@ from .results import load_json
 
 
 STAGES = ("preflight", "baseline", "fit", "certify", "profile", "ppo", "evaluate", "benchmark", "summarize")
+TRAINING_BUDGETS = ("attention_steps", "attention_epochs", "ppo_updates")
 
 
 @dataclass
@@ -48,7 +49,13 @@ class StudyPlan:
         return {"schema": "endo3r_scared_command_plan_v1", "dry_run": True,
                 "repository": str(self.repository), "output_root": str(self.output_root),
                 "device": self.device, "stages": list(self.selected_stages),
-                "budgets_are_smoke_defaults": True, "no_downloads": True, "no_installations": True,
+                "comparison_protocol": self.study.get('comparison_protocol'),
+                "paper_training_recipe_reproduced": self.study.get('paper_training_recipe_reproduced', False),
+                "data_sources": self.study.get('data_sources'),
+                "budgets_are_smoke_defaults": False,
+                "training_budgets": {key: self.study.get(key) for key in TRAINING_BUDGETS},
+                "missing_training_budgets": [key for key in TRAINING_BUDGETS if self.study.get(key) is None],
+                "no_downloads": True, "no_installations": True,
                 "config_overrides": self.configs, "commands": [command.to_dict() for command in self.commands],
                 "external_files": self.external_files,
                 "notes": self.study.get("notes", [])}
@@ -70,7 +77,8 @@ def _positive_integer(value, name):
 def plan_study(study_path, *, repository=None, output_root="outputs/scared_study", stages=("all",),
                manifest=None, dust3r_checkpoint=None, endo3r_checkpoint=None, raft_checkpoint=None,
                cost_calibration=None, profile_input=None, device="cuda:0", seeds=None,
-               python_executable=None, trusted_checkpoints=False):
+               python_executable=None, trusted_checkpoints=False,
+               attention_steps=None, attention_epochs=None, ppo_updates=None):
     """Read configurations and produce commands; writes/executes nothing."""
     repository = Path(repository or Path(__file__).resolve().parents[2]).resolve()
     study_path = Path(_absolute(study_path, repository))
@@ -79,7 +87,11 @@ def plan_study(study_path, *, repository=None, output_root="outputs/scared_study
         raise ValueError("Expected endo3r_scared_study_v1 catalog for SCARED")
     if study.get("train_datasets") != [1, 2, 3, 4, 5, 6] or study.get("validation_datasets") != [7] or study.get("test_datasets") != [8, 9]:
         raise ValueError("v1 study locks train1-6/validation7/test8-9; do not tune on the test data")
-    for key in ("attention_steps", "attention_epochs", "ppo_updates", "benchmark_repeats", "warmup_frames", "certification_max_frames", "stride"):
+    overrides = dict(attention_steps=attention_steps, attention_epochs=attention_epochs, ppo_updates=ppo_updates)
+    for key in TRAINING_BUDGETS:
+        value = overrides[key] if overrides[key] is not None else study.get(key)
+        study[key] = _positive_integer(value, key) if value is not None else None
+    for key in ("benchmark_repeats", "warmup_frames", "certification_max_frames", "stride"):
         _positive_integer(study.get(key), key)
     if study["warmup_frames"] < 2 or study["certification_max_frames"] < 2:
         raise ValueError("Warmup/certification need at least two frames")
@@ -134,6 +146,25 @@ def plan_study(study_path, *, repository=None, output_root="outputs/scared_study
             config_path = str(seed_root / f"config_{experiment['id']}.json")
             configs[config_path] = template
             paths[kind + "_config"] = config_path
+        hybrid_config, ppo_config, legacy_config = (configs[paths[kind + "_config"]]
+                                                    for kind in ("hybrid", "ppo", "legacy"))
+        if (hybrid_config['memory']['backend'] != 'hybrid_flash_kda' or
+                hybrid_config['baseline_identity'] != 'NEW_HYBRID' or
+                hybrid_config['policy']['long_write_policy'] != 'heuristic' or
+                hybrid_config['uncertainty']['metric'] != 'sampson' or
+                hybrid_config['uncertainty']['enabled'] is not True):
+            raise ValueError('Primary hybrid comparison requires new Flash/KDA attention, heuristic WRITE and enabled Sampson')
+        expected_ppo = json.loads(json.dumps(hybrid_config))
+        expected_ppo['policy']['long_write_policy'] = 'ppo'
+        if ppo_config != expected_ppo:
+            raise ValueError('Matched hybrid configs may differ only in long_write_policy: heuristic versus PPO; '
+                             'keep identical memory, Sampson/RAFT, checkpoints, preprocessing and reconstruction settings')
+        if (legacy_config['baseline_identity'] != 'LEGACY_OFFICIAL' or
+                legacy_config['memory']['backend'] != 'legacy' or
+                legacy_config['policy']['long_write_policy'] != 'heuristic' or
+                legacy_config['uncertainty']['metric'] != 'geometry_3d' or
+                legacy_config['uncertainty']['enabled'] is not True):
+            raise ValueError('Original comparison requires LEGACY_OFFICIAL with unchanged released memory/policy/geometry_3d uncertainty')
         hybrid_inputs = configs[paths["hybrid_config"]]
         common_inputs[seed] = [hybrid_inputs["training"]["data_manifest"], hybrid_inputs["checkpoints"]["dust3r"], hybrid_inputs["checkpoints"]["endo3r"], hybrid_inputs["checkpoints"]["raft"]]
         external_files += [path for path in common_inputs[seed] if path is not None]
@@ -144,6 +175,10 @@ def plan_study(study_path, *, repository=None, output_root="outputs/scared_study
                                      list(required), list(directories), list(outputs), kernel_proof))
 
     quality_reports, timing_reports = [], []
+    def budget_argument(key):
+        value = study[key]
+        return str(value) if value is not None else f'<{key.upper()}_REQUIRED>'
+
     official_raft = str(repository / "checkpoints" / "raft-things.pth")
     for seed in selected_seeds:
         p = paths_by_seed[seed]
@@ -166,7 +201,7 @@ def plan_study(study_path, *, repository=None, output_root="outputs/scared_study
         if "fit" in selected:
             command("fit", seed, hybrid_id, "train_hybrid_memory.py",
                     ["--config", p["hybrid_config"], *base, "--seed", str(seed), "--stage", "t1", "--run-training",
-                     "--total-steps", str(study["attention_steps"]), "--epochs", str(study["attention_epochs"]),
+                     "--total-steps", budget_argument("attention_steps"), "--epochs", budget_argument("attention_epochs"),
                      "--log-jsonl", str(output_root / f"seed_{seed}" / "attention_training.jsonl"), "--output", p["raw_hybrid"]],
                     required=[p["hybrid_config"], *inputs, p["preflight_proof"]], outputs=[p["raw_hybrid"]])
         if "certify" in selected:
@@ -179,7 +214,7 @@ def plan_study(study_path, *, repository=None, output_root="outputs/scared_study
         if "ppo" in selected:
             command("ppo", seed, ppo_id, "train_rl_controller.py",
                     ["--config", p["ppo_config"], *base, "--seed", str(seed), "--hybrid-checkpoint", p["certified_hybrid"],
-                     "--run-training", "--updates", str(study["ppo_updates"]), "--output", p["ppo"], "--actor-output", p["actor"],
+                     "--run-training", "--updates", budget_argument("ppo_updates"), "--output", p["ppo"], "--actor-output", p["actor"],
                      "--log-jsonl", str(output_root / f"seed_{seed}" / "ppo_training.jsonl")],
                     required=[p["ppo_config"], *inputs, p["certified_hybrid"], p["certification_report"], p["preflight_proof"], cost_path],
                     outputs=[p["ppo"], p["actor"]])
@@ -272,6 +307,15 @@ def validate_execution_inputs(plan):
                 name = command.argv[command.argv.index('--config') + 1]
                 if plan.configs.get(name, {}).get('baseline_identity') == 'LEGACY_OFFICIAL':
                     raise ValueError('LEGACY_OFFICIAL assumes visible CUDA device 0; choose cuda:0 and set CUDA_VISIBLE_DEVICES externally')
+    required_budgets = []
+    if 'fit' in plan.selected_stages:
+        required_budgets += ['attention_steps', 'attention_epochs']
+    if 'ppo' in plan.selected_stages:
+        required_budgets += ['ppo_updates']
+    missing_budgets = [key for key in required_budgets if plan.study.get(key) is None]
+    if missing_budgets:
+        raise ValueError('Training budget is unselected; supply explicit ' + ', '.join('--' + key.replace('_', '-') for key in missing_budgets)
+                         + ' before server execution. Dry commands are review-only; no default fitting recipe is chosen.')
     produced = set()
     missing = []
     for command in plan.commands:

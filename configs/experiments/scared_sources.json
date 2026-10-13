@@ -1,0 +1,50 @@
+{
+  "schema": "endoarl_paper_data_sources_v1",
+  "checked_on": "2026-10-13",
+  "paper": "https://arxiv.org/html/2504.03198v1",
+  "author_repository": "https://github.com/wrld/Endo3R",
+  "scope": "Source links and provenance requirements only; no downloads, dataset verification or permission to acquire weights.",
+  "scared": {
+    "official_home": "https://endovissub2019-scared.grand-challenge.org/Home/",
+    "official_geometry_description": "https://endovissub2019-scared.grand-challenge.org/About/",
+    "download_entry": "https://endovissub2019-scared.grand-challenge.org/Downloads/",
+    "download_entry_status": "Official access entry referenced by dataset tooling; direct page retrieval failed in this session, no direct archive URL validated.",
+    "organizer_contact_page": "https://endovissub2019-scared.grand-challenge.org/Committee/",
+    "source_paper": "https://arxiv.org/abs/2101.01133",
+    "paper_train_datasets": [1, 2, 3, 4, 5, 6, 7],
+    "paper_test_datasets": [8, 9],
+    "training_target_in_endo3r_paper": "StereoAnything stereo depth from rectified left/right RGB",
+    "evaluation_target": "Original structured-light/kinematic-warp GT, rectified and pixel-aligned to left RGB; explicitly verify units and coverage.",
+    "author_preprocessed_training_download": null,
+    "author_preprocessed_training_download_status": "No preprocessed StereoAnything target release linked in inspected Endo3R README; original author-generated training targets not recovered.",
+    "local_a00_target_identity": "Disparity derived from original scene_points GT; not a StereoAnything pseudo-depth release."
+  },
+  "stereoanything": {
+    "paper": "https://arxiv.org/abs/2411.14053",
+    "author_code": "https://github.com/XiandaGuo/OpenStereo",
+    "author_instructions": "https://github.com/XiandaGuo/OpenStereo/blob/master/docs/StereoAnything.md",
+    "author_model_config": "cfgs/nmrf/nmrf_swint_sceneflow_uniform.yaml",
+    "author_checkpoint_name": "StereoAnything-NMRF_swinT.bin",
+    "author_listed_checkpoint_link": "https://pan.baidu.com/s/1vG5n-1f8Dur0NujikcxDuQ?pwd=88wa",
+    "author_listed_access_code": "88wa",
+    "checkpoint_status": "Author-listed URL only; not downloaded or independently SHA256-verified. Exact checkpoint/version used by Endo3R paper is not specified by the Endo3R release.",
+    "purpose": "Offline training-label generation only; stereo RGB and pseudo-depth do not become deployed monocular model/actor inputs."
+  },
+  "paper_training_mixture": [
+    {"dataset": "SCARED", "role": "GT/stereo geometry", "url": "https://endovissub2019-scared.grand-challenge.org/Home/"},
+    {"dataset": "StereoMIS", "role": "GT/stereo geometry", "url": "https://zenodo.org/records/7727692", "page_check": "429 response; link confirmed in Endo3R author README"},
+    {"dataset": "C3VD", "role": "GT geometry", "url": "https://durrlab.github.io/C3VD/", "page_check": "Author dataset page read; do not silently substitute C3VDv2"},
+    {"dataset": "EndoMapper", "role": "GT/stereo geometry as grouped by Endo3R paper", "url": "https://www.synapse.org/Synapse:syn26707219"},
+    {"dataset": "AutoLaparo", "role": "No depth/pose GT in Endo3R training grouping", "url": "https://autolaparo.github.io/"},
+    {"dataset": "Cholec80", "role": "No depth/pose GT in Endo3R training grouping", "url": "https://opendatalab.com/OpenDataLab/Cholec80"},
+    {"dataset": "EndoVis17", "role": "No depth/pose GT in Endo3R training grouping", "url": "https://opencas.dkfz.de/endovis/datasetspublications/"},
+    {"dataset": "EndoVis18", "role": "No depth/pose GT in Endo3R training grouping", "url": "https://opencas.dkfz.de/endovis/datasetspublications/"}
+  ],
+  "requirements_before_paper_style_training": [
+    "Verified existing StereoAnything checkpoint and source revision; no automatic acquisition.",
+    "Verified per-frame rectified stereo calibration, baseline/units and exact RGB IDs; preserve original dataset.",
+    "Separate manifests/provenance for pseudo-depth training labels and genuine GT evaluation targets; do not certify or report test quality against pseudo-depth.",
+    "Independent validation is required before any train1-7 refit can select/certify attention or PPO.",
+    "Released training code, mixture sampling, optimization recipe and label-generation details are incomplete; never claim exact paper training reproduction."
+  ]
+}

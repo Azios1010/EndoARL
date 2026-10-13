@@ -22,6 +22,9 @@ def main(argv=None):
     parser.add_argument("--output-root", default="outputs/scared_study")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--seeds", nargs="+", type=int)
+    parser.add_argument("--attention-steps", type=int, help="Explicit supervised optimizer-step budget; no default fitting recipe")
+    parser.add_argument("--attention-epochs", type=int, help="Explicit supervised epoch limit")
+    parser.add_argument("--ppo-updates", type=int, help="Explicit PPO update budget")
     parser.add_argument("--python", dest="python_executable")
     parser.add_argument("--trusted-checkpoints", action="store_true")
     parser.add_argument("--write-configs", action="store_true", help="Explicit config materialization only; never launches jobs by itself")
@@ -31,7 +34,8 @@ def main(argv=None):
                       dust3r_checkpoint=args.dust3r_checkpoint, endo3r_checkpoint=args.endo3r_checkpoint,
                       raft_checkpoint=args.raft_checkpoint, cost_calibration=args.cost_calibration,
                       profile_input=args.profile_input, device=args.device, seeds=args.seeds,
-                      python_executable=args.python_executable, trusted_checkpoints=args.trusted_checkpoints)
+                      python_executable=args.python_executable, trusted_checkpoints=args.trusted_checkpoints,
+                      attention_steps=args.attention_steps, attention_epochs=args.attention_epochs, ppo_updates=args.ppo_updates)
     report = plan.to_dict()
     if args.write_configs:
         report["written_configs"] = materialize_configs(plan)

@@ -95,6 +95,12 @@ See [SCARED experiment protocol](docs/SCARED_EXPERIMENT_PROTOCOL.md) for data
 contracts, training, metrics, server requirements and reproducible commands.
 The [benchmark preview](docs/benchmark_preview/benchmark.md) contains pending
 N/A rows and separately identified paper references, not measured results.
+The [paper-matched comparison](docs/PAPER_MATCHED_COMPARISON.md) fixes the three
+branches to new attention + Sampson, the same attention/Sampson + PPO, and the
+unchanged released Endo3R baseline. Both hybrid configs differ only in WRITE
+policy. [Data source links](configs/experiments/scared_sources.json) distinguish
+original SCARED GT from paper-style StereoAnything training targets. Training
+budgets remain unselected until supplied explicitly to the study driver.
 
 ```bash
 # Read-only command/config preview; no jobs, writes, installations or downloads.

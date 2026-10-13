@@ -4,15 +4,43 @@ schema_version: 1
 baseline_identity: NEW_HYBRID
 memory:
   backend: hybrid_flash_kda
+  input_dim: 1024
+  output_dim: 1024
+  short:
+    max_frames: 4
+    model_dim: 512
+    num_heads: 8
+    head_dim: 64
+    backend: sdpa_flash
+    require_flash: true
+    store_projected: true
+  long:
+    backend: fla_kda
+    implementation_revision: 9f38d24980c46d46bd38614e743cdacd21906578
+    model_dim: 256
+    num_heads: 4
+    key_dim: 64
+    value_dim: 64
+    state_dtype: float32
+    inference_mode: chunk
 policy:
   long_write_policy: heuristic
   heuristic_similarity: 0.92
 uncertainty:
   enabled: true
+  estimator: raft
   metric: sampson
   sampson_sigma_px: 1.0
   sampson_min_translation: 0.000001
   raft_iters: 20
+  run_on: write_long_only
+  reference: last_successful_long_write
+  raft_dtype: float32
+  raft_mixed_precision: false
+  confidence_alpha: 5.0
+  confidence_floor_on_valid: 0.05
+  invalid_as_high_uncertainty: true
+  reject_all_invalid_write: true
 training:
   data_manifest: null
   image_width: 320
@@ -24,4 +52,9 @@ training:
   seed: 0
   shuffle_sequences: true
   new_memory_dtype: bfloat16
+  pretrained_compute_dtype: float32
   lr_new: 0.0001
+rl:
+  cost_calibration_path: null
+  frozen_environment: true
+  reward_mode: dense_gt

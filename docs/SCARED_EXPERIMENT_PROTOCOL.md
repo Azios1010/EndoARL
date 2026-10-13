@@ -83,7 +83,9 @@ Dense GT reward uses fixed first-frame alignment and normalized point L1 of the 
 
 Checkpoint schemas include configs, initialized checkpoint hashes, source provenance, optimizer/scheduler/scaler as relevant and RNG states. PPO actors bind the reconstruction/uncertainty/preprocessing environment and observation schema; mismatched actors fail clearly. Resume restarts at a fresh clip/episode boundary; it does **not** promise an exact in-episode cursor replay.
 
-The study's `1000` supervised steps, one epoch and one PPO update are smoke defaults. They are not adequate evidence of fit or final experiment budgets. Set explicit larger budgets on the server after a finite forward/backward smoke run and validation learning curves. Attention success is reconstruction certification; PPO success is improved validation quality/compute trade-off before test evaluation.
+Attention steps, epochs and PPO updates in the study catalog are unselected (`null`). Dry plans show required budget placeholders; the server executor refuses fitting stages until explicit positive budgets are supplied through `--attention-steps`, `--attention-epochs` and `--ppo-updates`. No 1000-step/one-epoch/one-update recipe is selected automatically. Choose fitting budgets after finite forward/backward preflight and validation learning curves. Attention success is reconstruction certification; PPO success is improved validation quality/compute trade-off before test evaluation.
+
+See [paper-matched comparison](PAPER_MATCHED_COMPARISON.md) and the [source registry](../configs/experiments/scared_sources.json) for the three requested branches, paper evaluation settings and data links. Both hybrid configs keep identical Sampson settings and differ only in WRITE policy; the planner rejects config drift. A00 is original-GT-derived disparity, not the StereoAnything pseudo-depth used for training in the paper. The validation7 holdout and the new supervised pointmap objective are explicit deviations from the unreleased original eight-dataset training recipe.
 
 ## Server workflow and artifacts
 
@@ -111,7 +113,7 @@ python tools/run_scared_study.py --stage all \
   --trusted-checkpoints --write-configs --server-run
 ```
 
-The input/profile paths must point to actual verified files, not these placeholders. Existing-cost-only execution can pass `--cost-calibration /work/measured_costs.json` instead of generating it. Stage selection supports separate restarts, for example `--stage preflight baseline fit`, then `--stage certify profile`, then `--stage ppo evaluate benchmark summarize`; dependent artifacts must already exist. Use a new output root when changing resolved configurations. Explicit trust is needed only for verified existing released pickle metadata.
+The input/profile paths must point to actual verified files, not these placeholders. Before `--server-run` with fit/PPO stages, also supply explicit selected `--attention-steps`, `--attention-epochs` and `--ppo-updates`; the example above intentionally selects no training budget and will not launch fitting as written. Existing-cost-only execution can pass `--cost-calibration /work/measured_costs.json` instead of generating it. Stage selection supports separate restarts, for example `--stage preflight baseline fit`, then `--stage certify profile`, then `--stage ppo evaluate benchmark summarize`; dependent artifacts must already exist. Use a new output root when changing resolved configurations. Explicit trust is needed only for verified existing released pickle metadata.
 
 Validate actual server kernels before fitting:
 
