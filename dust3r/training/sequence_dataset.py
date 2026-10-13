@@ -8,6 +8,9 @@ rgb, valid_mask (or an explicitly verified target-validity rule), intrinsics
 depth_scale, or pointmap plus pointmap_space (camera/world/first_camera).
 Paths are relative to the manifest directory unless absolute. There are no
 identity-pose, unit-depth, or calibration fallbacks.
+Depth files may explicitly declare depth_encoding=rectified_disparity with
+stereo_baseline_m and right_principal_x; u_left-u_right disparity is decoded
+to metres on the source rectified grid before the shared crop/resize.
 """
 from dataclasses import dataclass
 import copy
@@ -214,6 +217,18 @@ class SequenceDataset(Dataset):
                 raise FileNotFoundError(f"Required GT {target_key} file missing: {frame[target_key]}")
             if target_key == "depth" and ("depth_scale" not in frame or not 0 < float(frame["depth_scale"]) < float("inf")):
                 raise ValueError("depth_scale must explicitly convert stored GT depth to metric units")
+            encoding = frame.get("depth_encoding", "metric_depth")
+            if encoding not in {"metric_depth", "rectified_disparity"}:
+                raise ValueError("Unsupported explicit depth_encoding")
+            if encoding == "rectified_disparity":
+                if target_key != "depth" or float(frame["depth_scale"]) != 1.0:
+                    raise ValueError("Rectified disparity outputs metres and requires depth_scale=1")
+                baseline = float(frame.get("stereo_baseline_m", 0))
+                right_cx = float(frame.get("right_principal_x", float("nan")))
+                if not 0 < baseline < float("inf") or not torch.isfinite(torch.tensor(right_cx)):
+                    raise ValueError("Rectified disparity requires positive metric stereo_baseline_m and finite right_principal_x")
+                if frame.get("valid_mask_rule") != "depth_positive_finite" and not frame.get("valid_mask"):
+                    raise ValueError("Rectified disparity requires an explicit target validity policy")
             if target_key == "pointmap" and frame.get("pointmap_space") not in {"camera", "world", "first_camera"}:
                 raise ValueError("GT pointmap requires explicit coordinate space")
             if frame.get("valid_mask_rule") == "camera_xyz_positive_z_finite" and (target_key != "pointmap" or frame.get("pointmap_space") != "camera"):
@@ -244,7 +259,7 @@ class SequenceDataset(Dataset):
             return torch.from_numpy(np.asarray(image).copy())
 
     def _preprocess(self, rgb, depth_or_points, mask, intrinsics):
-        """Joint center crop then resize; GT nearest, RGB bilinear, pixel-center K."""
+        """Joint crop/resize; GT nearest-exact, RGB bilinear, half-pixel K."""
         if self.image_hw is None or tuple(rgb.shape[:2]) == self.image_hw:
             return rgb, depth_or_points, mask, intrinsics
         out_h, out_w = self.image_hw
@@ -259,9 +274,9 @@ class SequenceDataset(Dataset):
                             mode="bilinear", align_corners=False)[0].permute(1, 2, 0).round().clamp(0, 255).byte()
         tensor = depth_or_points.float()
         tensor = tensor[None, None] if tensor.ndim == 2 else tensor.permute(2, 0, 1)[None]
-        tensor = F.interpolate(tensor, self.image_hw, mode="nearest")[0]
+        tensor = F.interpolate(tensor, self.image_hw, mode="nearest-exact")[0]
         depth_or_points = tensor[0] if depth_or_points.ndim == 2 else tensor.permute(1, 2, 0)
-        mask = F.interpolate(mask[None, None].float(), self.image_hw, mode="nearest")[0, 0].bool()
+        mask = F.interpolate(mask[None, None].float(), self.image_hw, mode="nearest-exact")[0, 0].bool()
         intrinsics = intrinsics.clone()
         intrinsics[0, 2] -= left
         intrinsics[1, 2] -= top
@@ -281,6 +296,16 @@ class SequenceDataset(Dataset):
         rgb = rgb[..., :3].byte()
         key = "depth" if entry.get("depth") else "pointmap"
         values = self._array(self._path(entry[key])).float()
+        if entry.get("depth_encoding") == "rectified_disparity":
+            if values.ndim != 2:
+                raise ValueError("Rectified disparity GT must have HxW shape")
+            # Input disparity is u_left-u_right in native rectified pixels.
+            # Decode before resizing, so K and disparity are never scaled twice.
+            effective = values - (float(entry["intrinsics"][0][2]) - float(entry["right_principal_x"]))
+            valid = torch.isfinite(values) & (values > 0) & torch.isfinite(effective) & (effective > 0)
+            denominator = torch.where(valid, effective, torch.ones_like(effective))
+            depth = float(entry["intrinsics"][0][0]) * float(entry["stereo_baseline_m"]) / denominator
+            values = torch.where(valid, depth, torch.zeros_like(depth))
         if entry.get("valid_mask"):
             raw_mask = self._array(self._path(entry["valid_mask"]))
             mask = torch.isfinite(raw_mask) & (raw_mask > 0)

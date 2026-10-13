@@ -7,7 +7,8 @@ import torch
 
 from dust3r.training.hybrid_trainer import CHECKPOINT_SCHEMA
 from dust3r.training.teacher import file_sha256
-from dust3r.training.validation import certify_for_ppo, validate_legacy_baseline_report
+from dust3r.training.validation import (certify_for_ppo, validate_legacy_baseline_report,
+                                      validate_hybrid_certification)
 
 
 class ValidationGateTests(unittest.TestCase):
@@ -33,6 +34,19 @@ class ValidationGateTests(unittest.TestCase):
         baseline.update(baseline_identity='LEGACY_OFFICIAL', original_checkpoint_hashes={'endo3r': 'released-hash'})
         return report, baseline
 
+    def test_test_split_cannot_certify_reconstruction_or_select_ppo_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, output = Path(directory) / 'source.pt', Path(directory) / 'certified.pt'
+            torch.save(dict(schema=CHECKPOINT_SCHEMA, config={'memory': {'backend': 'hybrid_flash_kda'}},
+                            model={'weight': torch.ones(1)}), source)
+            report, baseline = self.reports(source)
+            report['split'] = baseline['split'] = 'test'
+            with self.assertRaisesRegex(ValueError, 'validation split'):
+                certify_for_ppo(source, report, baseline, output)
+            with self.assertRaisesRegex(ValueError, 'validation LEGACY_OFFICIAL'):
+                validate_legacy_baseline_report(baseline, 'released-hash', 'verified-manifest')
+            self.assertFalse(output.exists())
+
     def test_certification_saves_separate_checkpoint_and_binds_reports(self):
         with tempfile.TemporaryDirectory() as directory:
             source, output = Path(directory) / 'source.pt', Path(directory) / 'certified.pt'
@@ -42,8 +56,20 @@ class ValidationGateTests(unittest.TestCase):
             report, baseline = self.reports(source)
             summary = certify_for_ppo(source, report, baseline, output)
             self.assertTrue(summary['validated_for_ppo'])
+            self.assertEqual(summary['selection_split'], 'validation')
             self.assertEqual(file_sha256(source), original_hash)
             self.assertTrue(torch.load(output, weights_only=True)['validation_summary']['validated_for_ppo'])
+            validate_hybrid_certification(torch.load(output, weights_only=True), 'verified-manifest')
+
+    def test_ppo_rejects_unknown_test_or_different_manifest_certification(self):
+        summary = dict(validated_for_ppo=True, selection_split='validation', manifest_sha256='manifest')
+        validate_hybrid_certification({'validation_summary': summary}, 'manifest')
+        for field, value in [('selection_split', None), ('selection_split', 'test'),
+                             ('manifest_sha256', 'other'), ('validated_for_ppo', False)]:
+            invalid = dict(summary)
+            invalid[field] = value
+            with self.assertRaisesRegex(ValueError, 'validation-only certification'):
+                validate_hybrid_certification({'validation_summary': invalid}, 'manifest')
 
     def test_quality_provenance_reference_and_overwrite_fail_closed(self):
         with tempfile.TemporaryDirectory() as directory:

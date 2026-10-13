@@ -17,10 +17,10 @@ from .teacher import file_sha256
 def validate_legacy_baseline_report(report, endo3r_hash, manifest_hash):
     """Require a finite identified held-out baseline before legacy-policy PPO."""
     if (report.get('baseline_identity') != 'LEGACY_OFFICIAL' or
-            report.get('split') not in {'validation', 'test'} or
+            report.get('split') != 'validation' or
             report.get('original_checkpoint_hashes', {}).get('endo3r') != endo3r_hash or
             report.get('manifest_sha256') != manifest_hash):
-        raise ValueError('Legacy PPO requires a matching identified held-out LEGACY_OFFICIAL report')
+        raise ValueError('Legacy PPO requires a matching identified validation LEGACY_OFFICIAL report; test data cannot select a policy environment')
     if not report.get('sequences'):
         raise ValueError('Legacy baseline has no held-out evaluation coverage')
     for sequence in report['sequences']:
@@ -48,8 +48,8 @@ def certify_for_ppo(checkpoint, hybrid_report, baseline_report, output, toleranc
         raise ValueError('Certification requires NEW_HYBRID evaluation')
     if baseline_report.get('baseline_identity') != 'LEGACY_OFFICIAL':
         raise ValueError('Comparison must use the unchanged LEGACY_OFFICIAL baseline')
-    if hybrid_report.get('split') not in {'validation', 'test'}:
-        raise ValueError('Certification requires an explicitly held-out validation/test split')
+    if hybrid_report.get('split') != 'validation':
+        raise ValueError('Certification requires the validation split; test data cannot select a checkpoint')
     for field in ('split', 'manifest_sha256', 'image_hw', 'scale_protocol'):
         if not hybrid_report.get(field) or hybrid_report.get(field) != baseline_report.get(field):
             raise ValueError(f'Evaluation protocol mismatch or missing {field}')
@@ -96,7 +96,8 @@ def certify_for_ppo(checkpoint, hybrid_report, baseline_report, output, toleranc
         raise ValueError('Only explicit hybrid training checkpoints can be certified')
     report_hash = hashlib.sha256(json.dumps(hybrid_report, sort_keys=True, allow_nan=False).encode()).hexdigest()
     baseline_hash = hashlib.sha256(json.dumps(baseline_report, sort_keys=True, allow_nan=False).encode()).hexdigest()
-    payload['validation_summary'] = {'validated_for_ppo': True, 'quality_tolerance': tolerance,
+    payload['validation_summary'] = {'validated_for_ppo': True, 'selection_split': 'validation',
+                                    'quality_tolerance': tolerance,
                                     'source_checkpoint_sha256': file_sha256(checkpoint),
                                     'held_out_report_sha256': report_hash,
                                     'baseline_report_sha256': baseline_hash,
@@ -105,3 +106,13 @@ def certify_for_ppo(checkpoint, hybrid_report, baseline_report, output, toleranc
     output.parent.mkdir(parents=True, exist_ok=True)
     torch.save(payload, output)
     return payload['validation_summary']
+
+
+def validate_hybrid_certification(checkpoint, manifest_hash):
+    """PPO must not accept old/unknown or test-derived certification flags."""
+    summary = checkpoint.get('validation_summary', {})
+    if (summary.get('validated_for_ppo') is not True or
+            summary.get('selection_split') != 'validation' or
+            summary.get('manifest_sha256') != manifest_hash):
+        raise ValueError('Hybrid PPO requires validation-only certification for the current manifest; '
+                         'old/unknown or test-derived certification must be repeated on validation')

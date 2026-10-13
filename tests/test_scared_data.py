@@ -9,7 +9,7 @@ from unittest.mock import patch
 import numpy as np
 import torch
 
-from dust3r.data.scared import build_scared_manifest, discover_source_index, manifest_summary
+from dust3r.data.scared import build_scared_manifest, discover_source_index, manifest_summary, _required_file
 from dust3r.training.sequence_dataset import SequenceDataset, StreamingSequenceSample
 
 
@@ -46,6 +46,19 @@ def source_fixture(directory, dataset_id=1, frame_count=5, points=False):
 
 
 class ScaredManifestTests(unittest.TestCase):
+    def test_cached_parent_resolution_preserves_directory_and_file_symlinks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "real").mkdir()
+            (root / "real" / "target.npy").write_bytes(b"fixture")
+            (root / "alias").symlink_to(root / "real", target_is_directory=True)
+            (root / "real" / "linked.npy").symlink_to(root / "real" / "target.npy")
+            cache = {}
+            for name in ("alias/target.npy", "alias/linked.npy"):
+                self.assertEqual(_required_file(root, name, "target", cache), root / "real" / "target.npy")
+            with self.assertRaises(FileNotFoundError):
+                _required_file(root, "alias/missing.npy", "target", cache)
+
     def test_depth_units_c2w_and_split_protocol(self):
         with tempfile.TemporaryDirectory() as directory:
             source = source_fixture(directory)
@@ -66,6 +79,23 @@ class ScaredManifestTests(unittest.TestCase):
             source["sequences"][0]["pose"]["convention"] = "world_to_camera"
             manifest = build_scared_manifest(directory, source, Path(directory) / "manifest.json", dry_run=True)
             self.assertEqual(manifest["sequences"][0]["frames"][1]["camera_to_world"][0][3], -1.)
+
+    def test_disparity_encoding_and_metric_stereo_metadata_survive_conversion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = source_fixture(directory)
+            sequence = source["sequences"][0]
+            sequence["geometry"].update(units="m", stored_units="pixels")
+            for frame in sequence["frames"]:
+                np.save(Path(directory) / frame["depth"], np.full((4, 6), 4., dtype=np.float32))
+                frame.update(depth_encoding="rectified_disparity", stereo_baseline_m=.004,
+                             right_principal_x=0.)
+            output = Path(directory) / "manifest.json"
+            manifest = build_scared_manifest(directory, source, output, verify_arrays=True)
+            self.assertEqual(manifest["sequences"][0]["frames"][0]["depth_encoding"], "rectified_disparity")
+            torch.testing.assert_close(SequenceDataset(output)[0].targets[0]["depth"], torch.full((1, 4, 6), .2))
+            sequence["geometry"]["stored_units"] = "mm"
+            with self.assertRaisesRegex(ValueError, "stored_units"):
+                build_scared_manifest(directory, source, Path(directory) / "bad.json", dry_run=True)
 
     def test_missing_pose_convention_cannot_be_guessed(self):
         with tempfile.TemporaryDirectory() as directory:

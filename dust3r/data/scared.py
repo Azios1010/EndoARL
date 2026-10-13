@@ -55,12 +55,23 @@ def _resolve(root, value, field=None):
     return value
 
 
-def _required_file(root, value, description):
+def _required_file(root, value, description, parent_cache=None):
     if not isinstance(value, str) or not value:
         raise ValueError(f"Explicit {description} path is required")
     path = Path(value)
     path = path if path.is_absolute() else root / path
-    path = path.resolve()
+    if parent_cache is None:
+        path = path.resolve()
+    else:
+        # Source directories are immutable during one preparation call. Resolve
+        # their shared ancestors once, while still checking every file and
+        # resolving any final-file symlink independently (important on WSL).
+        parent = path.parent
+        if parent not in parent_cache:
+            parent_cache[parent] = parent.resolve()
+        path = parent_cache[parent] / path.name
+        if path.is_symlink():
+            path = path.resolve()
     if not path.is_file():
         raise FileNotFoundError(f"Required local {description} file missing: {path}")
     return path
@@ -157,6 +168,7 @@ def build_scared_manifest(source_root, source_index, output_path, *, dry_run=Fal
     if set(split_map) != set(range(1, 10)) or set(split_map.values()) - {"train", "validation", "test"}:
         raise ValueError("Split map must assign datasets 1..9 to train/validation/test")
     sequences, ids, patient_splits, extraction = [], set(), {}, []
+    parent_cache = {}
     for source in payload["sequences"]:
         dataset_id = source.get("dataset_id")
         if isinstance(dataset_id, bool) or not isinstance(dataset_id, int) or dataset_id not in split_map:
@@ -193,7 +205,7 @@ def build_scared_manifest(source_root, source_index, output_path, *, dry_run=Fal
             if frame.get("rgb_video"):
                 if not extract_video:
                     raise ValueError("Video references require --extract-video on the server; --dry-run can validate without extraction")
-                video = _required_file(root, frame["rgb_video"], "RGB video")
+                video = _required_file(root, frame["rgb_video"], "RGB video", parent_cache)
                 video_index = frame.get("rgb_frame_index")
                 if isinstance(video_index, bool) or not isinstance(video_index, int) or video_index < 0:
                     raise ValueError("Video frame index must explicitly match the GT frame; no FPS/timestamp guessing")
@@ -204,19 +216,19 @@ def build_scared_manifest(source_root, source_index, output_path, *, dry_run=Fal
                 rgb = output_path.parent / "scared_left_rgb" / safe_id / f"{frame_id:08d}.npy"
                 extraction.append((video, video_index, layout, rgb))
             else:
-                rgb = _required_file(root, frame.get("rgb"), "left RGB")
+                rgb = _required_file(root, frame.get("rgb"), "left RGB", parent_cache)
             has_depth, has_points = bool(frame.get("depth")), bool(frame.get("pointmap"))
             if has_depth == has_points:
                 raise ValueError("Exactly one depth or XYZ pointmap GT path is required")
             target_key = "depth" if has_depth else "pointmap"
-            target_path = _required_file(root, frame[target_key], target_key)
+            target_path = _required_file(root, frame[target_key], target_key, parent_cache)
             intrinsics = _resolve(root, frame.get("intrinsics", source.get("intrinsics")))
             intrinsics = _matrix(intrinsics, (3, 3), "intrinsics").tolist()
             pose = _checked_pose(root, frame.get("pose"), source.get("pose", {}))
             entry = {"frame_id": frame_id, "rgb": str(rgb), target_key: str(target_path),
                      "intrinsics": intrinsics, "camera_to_world": pose}
             if frame.get("valid_mask"):
-                entry["valid_mask"] = str(_required_file(root, frame["valid_mask"], "valid mask"))
+                entry["valid_mask"] = str(_required_file(root, frame["valid_mask"], "valid mask", parent_cache))
             else:
                 rule = frame.get("valid_mask_rule", gt.get("valid_mask_rule"))
                 if rule not in {"depth_positive_finite", "camera_xyz_positive_z_finite"}:
@@ -224,6 +236,13 @@ def build_scared_manifest(source_root, source_index, output_path, *, dry_run=Fal
                 entry["valid_mask_rule"] = rule
             if has_depth:
                 entry["depth_scale"] = _UNIT_SCALE[gt["units"]]
+                encoding = frame.get("depth_encoding", "metric_depth")
+                if encoding != "metric_depth":
+                    if encoding != "rectified_disparity" or gt.get("units") != "m" or gt.get("stored_units") != "pixels":
+                        raise ValueError("Rectified disparity requires geometry.units=m (decoded output) and stored_units=pixels")
+                    entry.update(depth_encoding=encoding,
+                                 stereo_baseline_m=frame.get("stereo_baseline_m"),
+                                 right_principal_x=frame.get("right_principal_x"))
                 if entry.get("valid_mask_rule") == "camera_xyz_positive_z_finite":
                     raise ValueError("Camera XYZ mask rule cannot be used for depth")
             else:
@@ -243,6 +262,8 @@ def build_scared_manifest(source_root, source_index, output_path, *, dry_run=Fal
                       "pose_convention_output": "camera_to_world", "camera_axes": "opencv",
                       "calibration": calibration, "frame_alignment_verified": True,
                       "verification_kind": "operator-declared; numerical checks do not prove sensor synchronization"}
+        if gt.get("stored_units"):
+            provenance["stored_geometry_units"] = gt["stored_units"]
         sequences.append({"id": sequence_id, "patient_id": patient, "split": split,
                           "provenance": provenance, "frames": entries})
     result = {"schema_version": 1, "dataset": "SCARED", "split_protocol": {

@@ -126,6 +126,41 @@ class DatasetTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "coverage"):
                 SequenceDataset(path)[0]
 
+    def test_rectified_disparity_decodes_metric_depth_and_masks_invalid_values(self):
+        import numpy as np
+        with tempfile.TemporaryDirectory() as directory:
+            path, payload = self._manifest(directory)
+            values = np.array([[4., 6.], [0., np.nan]], dtype=np.float32)
+            for index, frame in enumerate(payload["sequences"][0]["frames"]):
+                np.save(Path(directory) / f"depth{index}.npy", values)
+                frame.pop("valid_mask")
+                frame.update(depth_encoding="rectified_disparity", stereo_baseline_m=.004,
+                             right_principal_x=0., valid_mask_rule="depth_positive_finite",
+                             intrinsics=[[100., 0., 2.], [0., 100., 0.], [0., 0., 1.]])
+            path.write_text(json.dumps(payload))
+            target = SequenceDataset(path)[0].targets[0]
+            torch.testing.assert_close(target["depth"][0], torch.tensor([[.2, .1], [0., 0.]]))
+            self.assertEqual(target["valid_mask"].sum(), 2)
+            self.assertTrue(torch.isfinite(target["pointmap"]).all())
+            payload["sequences"][0]["frames"][0]["stereo_baseline_m"] = -1
+            path.write_text(json.dumps(payload))
+            with self.assertRaisesRegex(ValueError, "baseline"):
+                SequenceDataset(path)
+
+    def test_resize_gt_and_mask_use_rgb_half_pixel_sampling_centres(self):
+        import numpy as np
+        with tempfile.TemporaryDirectory() as directory:
+            path, _ = self._manifest(directory)
+            dataset = SequenceDataset(path, image_hw=(2, 2))
+            rgb = torch.zeros(4, 4, 3, dtype=torch.uint8)
+            depth = torch.arange(16).reshape(4, 4).float() + 1
+            mask = torch.zeros(4, 4, dtype=torch.bool)
+            mask[1::2, 1::2] = True
+            _, resized, resized_mask, k = dataset._preprocess(rgb, depth, mask, torch.eye(3))
+            torch.testing.assert_close(resized, depth[1::2, 1::2])
+            self.assertTrue(resized_mask.all())
+            self.assertAlmostEqual(float(k[0, 2]), -.25)
+
 
 class ToyModel(nn.Module):
     def __init__(self):

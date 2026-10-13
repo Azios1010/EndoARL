@@ -168,8 +168,8 @@ def main(argv=None):
                                         file_sha256(config.training.data_manifest))
     else:
         checkpoint = load_training_checkpoint(args.hybrid_checkpoint, model)
-        if checkpoint.get("validation_summary", {}).get("validated_for_ppo") is not True:
-            raise ValueError("Hybrid checkpoint has no successful held-out validated_for_ppo gate; PPO remains blocked")
+        from dust3r.training.validation import validate_hybrid_certification
+        validate_hybrid_certification(checkpoint, file_sha256(config.training.data_manifest))
     configure_trainable_parameters(model, "r0")
     model.eval()
     hybrid_hash = file_sha256(args.hybrid_checkpoint) if args.hybrid_checkpoint else None
