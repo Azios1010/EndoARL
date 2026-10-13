@@ -115,6 +115,31 @@ class ValidationGateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'checkpoint mismatch'):
                 certify_for_ppo(source, report, baseline, output)
 
+    def test_certification_preserves_existing_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, output = Path(directory) / 'source.pt', Path(directory) / 'certified.pt'
+            torch.save(dict(schema=CHECKPOINT_SCHEMA, config={'memory': {'backend': 'hybrid_flash_kda'}}), source)
+            output.write_bytes(b'previous verified artifact')
+            report, baseline = self.reports(source)
+            with self.assertRaises(FileExistsError):
+                certify_for_ppo(source, report, baseline, output)
+            self.assertEqual(output.read_bytes(), b'previous verified artifact')
+
+    def test_duplicate_episodes_and_wrong_frame_identity_cannot_certify(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, output = Path(directory) / 'source.pt', Path(directory) / 'certified.pt'
+            torch.save(dict(schema=CHECKPOINT_SCHEMA, config={'memory': {'backend': 'hybrid_flash_kda'}}), source)
+            report, baseline = self.reports(source)
+            report['sequences'].append(deepcopy(report['sequences'][0]))
+            with self.assertRaisesRegex(ValueError, 'Duplicate'):
+                certify_for_ppo(source, report, baseline, output)
+            report, baseline = self.reports(source)
+            report['sequences'][0]['frame_metrics'][0].update(frame=0, source_frame_id=1729)
+            baseline['sequences'][0]['frame_metrics'][0].update(frame=0, source_frame_id=1730)
+            with self.assertRaisesRegex(ValueError, 'frame identity mismatch'):
+                certify_for_ppo(source, report, baseline, output)
+            self.assertFalse(output.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

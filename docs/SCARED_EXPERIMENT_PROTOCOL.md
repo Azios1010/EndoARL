@@ -1,5 +1,12 @@
 # SCARED local-to-server experiment protocol
 
+For production server execution, follow the complete
+[fitting guide](SCARED_SERVER_FIT_GUIDE.md) and
+[environment guide](SCARED_SERVER_ENVIRONMENT.md). They provide full-validation
+candidate selection and manual actor validation; the study driver's prefix64
+stages are bounded probes. Missing StereoAnything/partial-GT implementations are
+specified in their linked guides and must not be mistaken for runnable features.
+
 This implementation prepares **Flash/KDA + heuristic + Sampson** and **Flash/KDA + PPO + Sampson** comparisons against the released Endo3R baseline. No SCARED data, checkpoints or optional CUDA packages are fetched by any command. Local development uses synthetic CPU fixtures. Actual fitting and measurements are `SERVER_VALIDATION_REQUIRED`.
 
 ## Experiment identities
@@ -89,6 +96,19 @@ See [paper-matched comparison](PAPER_MATCHED_COMPARISON.md) and the [source regi
 
 ## Server workflow and artifacts
 
+For the reported sparse-GT and smoke-checkpoint blockers, follow the
+[server fitting guide](SCARED_SERVER_FIT_GUIDE.md). Coverage inventory uses the
+same decoding/crop/nearest-exact/final geometry validity as the normal loader;
+the normal loader still rejects empty GT. A separately generated TRAIN-only
+supervision manifest can select valid contiguous runs via
+`--supervision-manifest`; keep `--manifest` unchanged for full evaluation and
+certification. The checkpoint binds both target selection and source hashes.
+Direct training entrypoints no longer pick a smoke budget automatically.
+Candidate checkpoints saved with `--checkpoint-every`/`--checkpoint-dir` remain
+unvalidated. `tools/select_hybrid_checkpoint.py` selects from full validation
+reports by default and writes the new certified artifact explicitly. Prefix64
+certification remains a bounded preflight gate, not full model selection.
+
 `configs/experiments/scared_study.json` is the declarative catalog. `tools/run_scared_study.py` builds ordered per-seed commands, materializes resolved configs only when requested, and executes them only with `--server-run`. Start with `--help` and a default dry invocation. Required inputs are existing server manifest, existing DUSt3R/Endo3R/RAFT checkpoints and a writable output root. Profiling needs a supplied **existing validation/train RGB directory**; do not profile test data to tune the cost reward. The driver emits exact commands for:
 
 ```text
@@ -100,7 +120,7 @@ preflight → official validation → supervised fit per seed → matched valida
 
 Seeds are 0/1/2. Each experiment/seed has stable config/report/checkpoint paths. Heuristic and PPO use exactly the same certified attention weights for that seed. The actor adds its own checkpoint identity. Logs are JSONL and only written when execution is explicitly requested. Stages stop on errors; there is no automatic installation, checkpoint acquisition or baseline repair.
 
-Concrete full workflow command for a prepared server (first remove `--write-configs --server-run` to review it):
+Read-only complete command preview for a prepared server:
 
 ```bash
 python tools/run_scared_study.py --stage all \
@@ -110,10 +130,20 @@ python tools/run_scared_study.py --stage all \
   --raft-checkpoint ./checkpoints/raft-things.pth \
   --profile-input /data/SCARED/VERIFIED_VALIDATION_LEFT_RGB_DIRECTORY \
   --output-root /work/endoarl_scared --device cuda:0 \
-  --trusted-checkpoints --write-configs --server-run
+  --trusted-checkpoints
 ```
 
-The input/profile paths must point to actual verified files, not these placeholders. Before `--server-run` with fit/PPO stages, also supply explicit selected `--attention-steps`, `--attention-epochs` and `--ppo-updates`; the example above intentionally selects no training budget and will not launch fitting as written. Existing-cost-only execution can pass `--cost-calibration /work/measured_costs.json` instead of generating it. Stage selection supports separate restarts, for example `--stage preflight baseline fit`, then `--stage certify profile`, then `--stage ppo evaluate benchmark summarize`; dependent artifacts must already exist. Use a new output root when changing resolved configurations. Explicit trust is needed only for verified existing released pickle metadata.
+The input/profile paths must point to actual verified files, not these placeholders.
+The preview selects no training budget and launches no jobs. For production,
+materialize configs, execute preflight, fit candidates manually, run full validation
+and checkpoint selection, freeze measured calibration, train/validate actor budget
+candidates, then execute held-out evaluation and benchmark as described in the
+[server fitting guide](SCARED_SERVER_FIT_GUIDE.md). Do not run `all --server-run`
+as a production selection workflow: study baseline/certification uses prefix64,
+fit lacks periodic candidates, and PPO has no automatic actor selector.
+Existing-cost-only execution can pass `--cost-calibration /work/measured_costs.json`.
+Use a new output root when changing resolved configurations. Explicit trust applies
+only to verified existing released pickle metadata.
 
 Validate actual server kernels before fitting:
 

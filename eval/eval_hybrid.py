@@ -200,7 +200,8 @@ def main(argv=None):
     from dust3r.training.sequence_dataset import SequenceDataset
     from dust3r.online.streaming import create_stream_runner
     dataset = SequenceDataset(args.manifest or config.training.data_manifest, split=args.split,
-                              image_hw=(config.training.image_height, config.training.image_width))
+                              image_hw=(config.training.image_height, config.training.image_width),
+                              stride=config.training.stride)
     model, hashes = load_inference_model(config, device=args.device, hybrid_checkpoint=args.hybrid_checkpoint,
                                    actor_checkpoint=args.actor_checkpoint, trusted_checkpoints=args.trusted_checkpoints)
     results, coverage = [], []
@@ -209,17 +210,22 @@ def main(argv=None):
         if args.max_frames is not None and sample.frame_count > args.max_frames:
             sample = sample.prefix(args.max_frames)
         runner = create_stream_runner(model, config, sample.frame_count, sample.episode_id)
-        results.append({'episode_id': sample.episode_id,
-                        **evaluate_stream(sample, runner, device=args.device, pose=args.pose)})
+        sequence_result = evaluate_stream(sample, runner, device=args.device, pose=args.pose)
+        for frame in sequence_result['frame_metrics']:
+            frame['source_frame_id'] = sample.source_frame_id(frame['frame'])
+        results.append({'episode_id': sample.episode_id, **sequence_result})
         coverage.append({'episode_id': sample.episode_id,
                          'source_frame_ids': [sample.source_frame_id(i) for i in range(sample.frame_count)]})
         sample.clear_cache()
     from dust3r.training.teacher import file_sha256
+    from dust3r.training.provenance import source_provenance
     memory = getattr(model, 'hybrid_memory', None)
     report = {'baseline_identity': config.baseline_identity, 'config': config.to_dict(), 'sequences': results,
               'split': args.split, 'manifest_sha256': file_sha256(args.manifest or config.training.data_manifest),
               'image_hw': [config.training.image_height, config.training.image_width],
               'max_frames': args.max_frames, 'subset_sha256': subset_fingerprint(coverage),
+              'coverage': coverage, 'stride': config.training.stride,
+              'source_provenance': source_provenance(),
               'evaluation_streaming': True,
               'scale_protocol': 'one_detached_first_frame_scale', 'original_checkpoint_hashes': hashes,
               'hybrid_checkpoint_sha256': file_sha256(args.hybrid_checkpoint) if args.hybrid_checkpoint else None,

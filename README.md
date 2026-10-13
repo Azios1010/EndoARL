@@ -101,6 +101,22 @@ unchanged released Endo3R baseline. Both hybrid configs differ only in WRITE
 policy. [Data source links](configs/experiments/scared_sources.json) distinguish
 original SCARED GT from paper-style StereoAnything training targets. Training
 budgets remain unselected until supplied explicitly to the study driver.
+The [server fitting guide](docs/SCARED_SERVER_FIT_GUIDE.md) compares the paper
+with the implemented protocol and gives commands for full GT coverage inventory,
+source-bound TRAIN supervision runs, validation checkpoint selection and PPO.
+Use `--supervision-manifest` for fitting while retaining `--manifest` as the
+unchanged evaluation/certification source. Direct training CLIs also require
+explicit budgets; two-step smoke checkpoints are not automatically PPO-ready.
+
+The complete server instructions also include an
+[isolated environment guide](docs/SCARED_SERVER_ENVIRONMENT.md),
+[StereoAnything label/exporter guide](docs/SCARED_STEREOANYTHING_LABEL_GUIDE.md)
+and [partial-GT implementation guide](docs/SCARED_PARTIAL_GT_IMPLEMENTATION.md).
+The latter two describe missing implementation work, not ready-made CLI commands.
+Use the main fitting guide's full-validation and actor-selection workflow for
+production. Study `all --server-run` is not a substitute: its certification is a
+bounded probe and it does not select PPO actors. The original setup earlier
+belongs to the released baseline; use the isolated environment guide for FLA.
 
 ```bash
 # Read-only command/config preview; no jobs, writes, installations or downloads.

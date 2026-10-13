@@ -14,6 +14,7 @@ def main(argv=None):
     parser.add_argument("--study", default="configs/experiments/scared_study.json")
     parser.add_argument("--stage", nargs="+", choices=("all", *STAGES), default=["all"])
     parser.add_argument("--manifest")
+    parser.add_argument('--supervision-manifest', help='Explicit coverage-selected TRAIN-only manifest; --manifest retains all original evaluation frames')
     parser.add_argument("--dust3r-checkpoint")
     parser.add_argument("--endo3r-checkpoint")
     parser.add_argument("--raft-checkpoint", help="Hybrid RAFT path; official legacy additionally requires checkpoints/raft-things.pth")
@@ -35,7 +36,8 @@ def main(argv=None):
                       raft_checkpoint=args.raft_checkpoint, cost_calibration=args.cost_calibration,
                       profile_input=args.profile_input, device=args.device, seeds=args.seeds,
                       python_executable=args.python_executable, trusted_checkpoints=args.trusted_checkpoints,
-                      attention_steps=args.attention_steps, attention_epochs=args.attention_epochs, ppo_updates=args.ppo_updates)
+                      attention_steps=args.attention_steps, attention_epochs=args.attention_epochs, ppo_updates=args.ppo_updates,
+                      supervision_manifest=args.supervision_manifest)
     report = plan.to_dict()
     if args.write_configs:
         report["written_configs"] = materialize_configs(plan)

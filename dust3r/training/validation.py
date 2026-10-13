@@ -42,6 +42,8 @@ def certify_for_ppo(checkpoint, hybrid_report, baseline_report, output, toleranc
     checkpoint, output = Path(checkpoint), Path(output)
     if output.resolve() == checkpoint.resolve():
         raise ValueError('Certification output must be a different checkpoint path')
+    if output.exists():
+        raise FileExistsError(f'Refusing to overwrite a certified checkpoint: {output}')
     if not math.isfinite(tolerance) or tolerance < 0:
         raise ValueError('Quality tolerance must be finite and nonnegative')
     if hybrid_report.get('baseline_identity') != 'NEW_HYBRID':
@@ -53,7 +55,7 @@ def certify_for_ppo(checkpoint, hybrid_report, baseline_report, output, toleranc
     for field in ('split', 'manifest_sha256', 'image_hw', 'scale_protocol'):
         if not hybrid_report.get(field) or hybrid_report.get(field) != baseline_report.get(field):
             raise ValueError(f'Evaluation protocol mismatch or missing {field}')
-    for field in ('max_frames', 'subset_sha256'):
+    for field in ('max_frames', 'subset_sha256', 'coverage', 'stride'):
         if field in hybrid_report or field in baseline_report:
             if field not in hybrid_report or field not in baseline_report or hybrid_report[field] != baseline_report[field]:
                 raise ValueError(f'Evaluation coverage mismatch: {field}')
@@ -72,6 +74,8 @@ def certify_for_ppo(checkpoint, hybrid_report, baseline_report, output, toleranc
         raise ValueError('SERVER_VALIDATION_REQUIRED: actual Flash and FLA kernels must be validated before PPO')
     hybrid = {item['episode_id']: item for item in hybrid_report.get('sequences', [])}
     baseline = {item['episode_id']: item for item in baseline_report.get('sequences', [])}
+    if len(hybrid) != len(hybrid_report.get('sequences', [])) or len(baseline) != len(baseline_report.get('sequences', [])):
+        raise ValueError('Duplicate evaluation episode IDs are forbidden')
     if not hybrid or set(hybrid) != set(baseline):
         raise ValueError('Reports must cover exactly the same nonempty held-out sequences')
     comparisons = []
@@ -79,6 +83,11 @@ def certify_for_ppo(checkpoint, hybrid_report, baseline_report, output, toleranc
         current, reference = hybrid[episode], baseline[episode]
         if len(current.get('frame_metrics', [])) != len(reference.get('frame_metrics', [])) or not current.get('frame_metrics'):
             raise ValueError('Matching nonempty per-frame evaluation coverage is required')
+        for current_frame, reference_frame in zip(current['frame_metrics'], reference['frame_metrics']):
+            for field in ('frame', 'source_frame_id'):
+                if field in current_frame or field in reference_frame:
+                    if current_frame.get(field) != reference_frame.get(field):
+                        raise ValueError(f'Evaluation frame identity mismatch: {field}')
         for metric in ('point_l1_normalized', 'depth_abs_rel'):
             for report in (current, reference):
                 if any(not isinstance(frame.get(metric), (int, float)) or

@@ -183,6 +183,9 @@ class HybridTrainer:
         self.scaler = torch.amp.GradScaler('cuda', enabled=(self.device.type == 'cuda' and
             config_value(self.training_config, 'new_memory_dtype') == 'float16'))
         self.deterministic_policy = getattr(runner, "policy", None)
+        from .data import training_data_contract
+        manifest = config_value(self.training_config, 'data_manifest')
+        self.data_contract = training_data_contract(config) if manifest and Path(manifest).is_file() else None
 
     def _optimize_window(self, losses):
         combined = torch.stack(losses).mean()
@@ -251,12 +254,12 @@ class HybridTrainer:
     def save_checkpoint(self, path, validation_summary=None, original_checkpoint_hashes=None):
         save_training_checkpoint(path, self.model, self.config, self.optimizer, self.scheduler,
                                  self.global_step, self.stage, validation_summary, original_checkpoint_hashes,
-                                 self.scaler)
+                                 self.scaler, self.data_contract)
 
 
 def save_training_checkpoint(path, model, config, optimizer=None, scheduler=None, global_step=0,
                              stage="t1", validation_summary=None, original_checkpoint_hashes=None,
-                             scaler=None):
+                             scaler=None, training_data_contract=None):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     model_state = model.state_dict()
@@ -272,6 +275,7 @@ def save_training_checkpoint(path, model, config, optimizer=None, scheduler=None
                "global_step": global_step, "original_checkpoint_hashes": original_checkpoint_hashes or {},
                "external_revisions": runtime_revisions(), "observation_schema": "actor30_v1",
                "validation_summary": validation_summary or {}, "rng": capture_rng_state(),
+               "training_data_contract": training_data_contract,
                "optimizer": None if optimizer is None else optimizer.state_dict(),
                "scheduler": None if scheduler is None else scheduler.state_dict(),
                "scaler": None if scaler is None else scaler.state_dict()}
@@ -317,6 +321,9 @@ def validate_required_paths(config, manifest=None, require_raft=None):
         manifest = config_value(config_value(config, "training", {}), "data_manifest")
     if not manifest or not Path(manifest).is_file():
         errors.append(f"Verified GT sequence manifest required: {manifest!r}")
+    supervision = config_value(config_value(config, 'training', {}), 'supervision_manifest')
+    if supervision and not Path(supervision).is_file():
+        errors.append(f'Training supervision manifest missing: {supervision!r}; generate it with tools/audit_scared_supervision.py')
     return errors
 
 

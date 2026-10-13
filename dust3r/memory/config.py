@@ -104,6 +104,9 @@ class PolicyConfig:
 class TrainingConfig:
     entrypoint: str = "train_hybrid_memory.py"
     data_manifest: Optional[str] = None
+    # Full original manifest remains the evaluation/certification identity.
+    # This optional, source-bound TRAIN-only manifest selects valid GT runs.
+    supervision_manifest: Optional[str] = None
     seed: int = 0
     shuffle_sequences: bool = True
     image_width: int = 320
@@ -225,6 +228,8 @@ class HybridConfig:
         if not 0 <= u.confidence_floor_on_valid <= 1:
             raise ValueError("confidence_floor_on_valid must be in [0,1]")
         t, r = self.training, self.rl
+        if t.supervision_manifest is not None and (not isinstance(t.supervision_manifest, str) or not t.supervision_manifest.strip()):
+            raise ValueError('training.supervision_manifest must be a nonempty local path or null')
         if t.seed < 0:
             raise ValueError("training.seed must be nonnegative")
         if t.batch_size != 1 or min(t.image_height, t.image_width, t.tbptt_pairs, t.stride) <= 0:

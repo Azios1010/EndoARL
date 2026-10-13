@@ -13,6 +13,7 @@ def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="configs/hybrid_memory.yaml")
     parser.add_argument("--manifest")
+    parser.add_argument('--supervision-manifest', help='Source-bound TRAIN-only valid runs; certification remains bound to --manifest')
     parser.add_argument("--seed", type=int)
     parser.add_argument("--log-jsonl")
     parser.add_argument("--resume-checkpoint", help="Same-environment PPO training state, reset episodes at resume")
@@ -26,7 +27,7 @@ def build_parser():
     parser.add_argument("--reference", action="store_true", help="Explicit CPU reference configuration, no efficiency claims")
     parser.add_argument("--trusted-checkpoints", action="store_true")
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--updates", type=int, default=1)
+    parser.add_argument("--updates", type=int, help='Explicit positive PPO update budget; no default fitting recipe')
     parser.add_argument("--output", default="checkpoints/ppo_write_training.pt")
     parser.add_argument("--actor-output", default="checkpoints/ppo_write_actor.pt")
     return parser
@@ -93,10 +94,16 @@ def main(argv=None):
         raw["uncertainty"]["enabled"] = False
     if args.manifest:
         raw["training"]["data_manifest"] = args.manifest
+    if args.supervision_manifest:
+        raw['training']['supervision_manifest'] = args.supervision_manifest
     if args.seed is not None:
         raw["training"]["seed"] = args.seed
     config = load_config(raw)
     requirements = validate_required_paths(config)
+    if args.updates is not None and args.updates < 1:
+        raise ValueError('--updates must be positive')
+    if not args.dry_run and args.updates is None:
+        raise ValueError('PPO budget is unselected; supply explicit --updates')
     legacy = config.memory.backend == 'legacy'
     if legacy:
         if config.baseline_identity != 'LEGACY_POLICY':
@@ -116,12 +123,18 @@ def main(argv=None):
               "actor_hidden": config.rl.actor_hidden, "critic_hidden": config.rl.critic_hidden,
               "frozen_environment": config.rl.frozen_environment,
               "seed": config.training.seed, "streaming_episode": True,
+              'training_budgets': {'updates': args.updates},
+              'missing_training_budgets': ['updates'] if args.updates is None else [],
+              'evaluation_manifest': config.training.data_manifest,
+              'supervision_manifest': config.training.supervision_manifest,
               "requirements_ready": not requirements, "blocking_requirements": requirements,
               "actions": ["TEMP_ONLY", "WRITE_LONG"], "no_downloads": True, "no_installations": True,
               "server_validation": "SERVER_VALIDATION_REQUIRED: stable supervised checkpoint and calibrated delayed reward"}
     if args.validate_data:
-        from dust3r.training.sequence_dataset import SequenceDataset
-        report["dataset"] = SequenceDataset(config.training.data_manifest).validate_all()
+        from dust3r.training.data import make_training_dataset
+        dataset, contract = make_training_dataset(config)
+        report['training_data_contract'] = contract
+        report['dataset'] = dataset.validate_all()
     if args.validate_modules:
         from dust3r.rl.networks import Actor, Critic
         actor = Actor(hidden=tuple(config.rl.actor_hidden))
@@ -134,8 +147,6 @@ def main(argv=None):
         return 0
     if requirements:
         raise FileNotFoundError("PPO readiness failed:\n" + "\n".join(requirements))
-    if args.updates < 1:
-        raise ValueError("--updates must be positive")
     if config.rl.reward_mode != "dense_gt":
         raise ValueError("This v1 entrypoint selects verified DenseGTReward. Other reward interfaces require an explicit data protocol; no fabricated dense GT fallback.")
     import torch
@@ -148,7 +159,7 @@ def main(argv=None):
     from dust3r.training.hybrid_trainer import (load_initialized_model, load_training_checkpoint,
                                                configure_trainable_parameters, move_tensors,
                                                runtime_revisions, SOURCE_COMMIT)
-    from dust3r.training.sequence_dataset import SequenceDataset
+    from dust3r.training.data import make_training_dataset
     from dust3r.training.teacher import file_sha256
     from dust3r.training.losses import pointmap_from_output
     from dust3r.memory.policies import PPOWritePolicy
@@ -189,9 +200,7 @@ def main(argv=None):
     reward = DenseGTReward(quality_weight=config.rl.reward_quality_weight, write_weight=config.rl.reward_write_weight,
                            raft_weight=config.rl.reward_raft_weight, kda_geometry_weight=config.rl.reward_kda_geometry_weight,
                            error_cap=config.rl.reward_quality_error_cap, calibration=calibration)
-    dataset = SequenceDataset(config.training.data_manifest, split="train",
-                              image_hw=(config.training.image_height, config.training.image_width),
-                              stride=config.training.stride)
+    dataset, data_contract = make_training_dataset(config)
     eligible = [index for index, (_, entries, _) in enumerate(dataset.samples) if len(entries) >= 4]
     if not eligible:
         raise ValueError("PPO actor training needs videos of at least four frames, including a nonforced decision")
@@ -215,6 +224,8 @@ def main(argv=None):
         verify_actor_environment(payload, config, hashes, hybrid_hash)
         if payload.get('config') != primitive_config(config):
             raise ValueError("PPO resume configuration changed; explicit new experiment required")
+        if payload.get('training_data_contract') != data_contract:
+            raise ValueError('PPO resume training supervision changed or is unbound; start an explicit new experiment')
         if (payload.get('reward_calibration') != (None if calibration is None else vars(calibration)) or
                 payload.get('reward_calibration_metadata') != calibration_metadata):
             raise ValueError('PPO resume reward/cost calibration changed; start an explicit new experiment.')
@@ -289,6 +300,7 @@ def main(argv=None):
     source = source_provenance()
     rng = capture_rng_state()
     training_payload = {"schema": "endo3r_ppo_write_v1", "config": primitive_config(config),
+                        'training_data_contract': data_contract,
                         'source_commit': source['git_commit'], 'source_provenance': source,
                         'legacy_audited_source_commit': SOURCE_COMMIT,
                         'external_revisions': runtime_revisions(),

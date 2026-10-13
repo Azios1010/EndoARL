@@ -78,7 +78,8 @@ def plan_study(study_path, *, repository=None, output_root="outputs/scared_study
                manifest=None, dust3r_checkpoint=None, endo3r_checkpoint=None, raft_checkpoint=None,
                cost_calibration=None, profile_input=None, device="cuda:0", seeds=None,
                python_executable=None, trusted_checkpoints=False,
-               attention_steps=None, attention_epochs=None, ppo_updates=None):
+               attention_steps=None, attention_epochs=None, ppo_updates=None,
+               supervision_manifest=None):
     """Read configurations and produce commands; writes/executes nothing."""
     repository = Path(repository or Path(__file__).resolve().parents[2]).resolve()
     study_path = Path(_absolute(study_path, repository))
@@ -110,6 +111,7 @@ def plan_study(study_path, *, repository=None, output_root="outputs/scared_study
         selected = [stage for stage in STAGES if stage in stages]
     output_root = Path(_absolute(output_root, repository))
     manifest = _absolute(manifest, repository)
+    supervision_manifest = _absolute(supervision_manifest, repository)
     profile_input = _absolute(profile_input, repository)
     supplied_cost = _absolute(cost_calibration, repository)
     cost_path = supplied_cost or str(output_root / "cost_calibration.json")
@@ -141,6 +143,9 @@ def plan_study(study_path, *, repository=None, output_root="outputs/scared_study
                 template["checkpoints"][key] = _absolute(override or template["checkpoints"][key], repository)
             template["training"].update(seed=seed, data_manifest=manifest or _absolute(template["training"].get("data_manifest"), repository),
                                          image_height=image_hw[0], image_width=image_hw[1], stride=study["stride"])
+            if kind != 'legacy':
+                template['training']['supervision_manifest'] = (supervision_manifest or
+                    _absolute(template['training'].get('supervision_manifest'), repository))
             template["rl"]["cost_calibration_path"] = cost_path
             template = load_config(template).to_dict()
             config_path = str(seed_root / f"config_{experiment['id']}.json")
@@ -168,6 +173,8 @@ def plan_study(study_path, *, repository=None, output_root="outputs/scared_study
         hybrid_inputs = configs[paths["hybrid_config"]]
         common_inputs[seed] = [hybrid_inputs["training"]["data_manifest"], hybrid_inputs["checkpoints"]["dust3r"], hybrid_inputs["checkpoints"]["endo3r"], hybrid_inputs["checkpoints"]["raft"]]
         external_files += [path for path in common_inputs[seed] if path is not None]
+        if hybrid_inputs['training'].get('supervision_manifest'):
+            external_files.append(hybrid_inputs['training']['supervision_manifest'])
 
     def command(stage, seed, experiment_id, script, args, required=(), outputs=(), directories=(), kernel_proof=None):
         commands.append(StudyCommand(stage, seed, experiment_id,
@@ -186,13 +193,15 @@ def plan_study(study_path, *, repository=None, output_root="outputs/scared_study
         hybrid_id, ppo_id, legacy_id = kinds["hybrid"]["id"], kinds["ppo"]["id"], kinds["legacy"]["id"]
         manifest_flags = ["--manifest", inputs[0]] if inputs[0] is not None else []
         base = ["--device", device, *manifest_flags, *trust]
+        selected_training = configs[p['hybrid_config']]['training'].get('supervision_manifest')
+        training_files = [selected_training] if selected_training else []
         if "preflight" in selected:
             command("preflight", seed, hybrid_id, "tools/check_memory_backends.py",
                     ["--config", p["hybrid_config"], "--server-kernels", "--device", device],
                     required=[p["hybrid_config"]], outputs=[p["preflight_proof"]], kernel_proof=p["preflight_proof"])
             command("preflight", seed, hybrid_id, "train_hybrid_memory.py",
                     ["--config", p["hybrid_config"], "--dry-run", "--validate-data", "--validate-modules", "--device", device],
-                    required=[p["hybrid_config"], *inputs])
+                    required=[p["hybrid_config"], *inputs, *training_files])
         if "baseline" in selected:
             command("baseline", seed, legacy_id, "eval/eval_hybrid.py",
                     ["--config", p["legacy_config"], *base, "--split", "validation", "--max-frames", str(study["certification_max_frames"]),
@@ -203,7 +212,7 @@ def plan_study(study_path, *, repository=None, output_root="outputs/scared_study
                     ["--config", p["hybrid_config"], *base, "--seed", str(seed), "--stage", "t1", "--run-training",
                      "--total-steps", budget_argument("attention_steps"), "--epochs", budget_argument("attention_epochs"),
                      "--log-jsonl", str(output_root / f"seed_{seed}" / "attention_training.jsonl"), "--output", p["raw_hybrid"]],
-                    required=[p["hybrid_config"], *inputs, p["preflight_proof"]], outputs=[p["raw_hybrid"]])
+                    required=[p["hybrid_config"], *inputs, *training_files, p["preflight_proof"]], outputs=[p["raw_hybrid"]])
         if "certify" in selected:
             command("certify", seed, hybrid_id, "eval/eval_hybrid.py",
                     ["--config", p["hybrid_config"], *base, "--split", "validation", "--max-frames", str(study["certification_max_frames"]),
@@ -216,7 +225,7 @@ def plan_study(study_path, *, repository=None, output_root="outputs/scared_study
                     ["--config", p["ppo_config"], *base, "--seed", str(seed), "--hybrid-checkpoint", p["certified_hybrid"],
                      "--run-training", "--updates", budget_argument("ppo_updates"), "--output", p["ppo"], "--actor-output", p["actor"],
                      "--log-jsonl", str(output_root / f"seed_{seed}" / "ppo_training.jsonl")],
-                    required=[p["ppo_config"], *inputs, p["certified_hybrid"], p["certification_report"], p["preflight_proof"], cost_path],
+                    required=[p["ppo_config"], *inputs, *training_files, p["certified_hybrid"], p["certification_report"], p["preflight_proof"], cost_path],
                     outputs=[p["ppo"], p["actor"]])
         for kind, experiment in kinds.items():
             identifier = experiment["id"]
@@ -332,6 +341,12 @@ def validate_execution_inputs(plan):
         produced.update(command.outputs)
     if missing:
         raise FileNotFoundError("Server study prerequisites are not ready:\n" + "\n".join(sorted(set(missing))))
+    if any(stage in plan.selected_stages for stage in ('preflight', 'fit', 'ppo')):
+        from dust3r.training.data import training_data_contract
+        from dust3r.memory.config import load_config
+        for payload in plan.configs.values():
+            if payload['memory']['backend'] == 'hybrid_flash_kda' and payload['training'].get('supervision_manifest'):
+                training_data_contract(load_config(payload))
     if plan.manifest and Path(plan.manifest).is_file() and any(stage != "summarize" for stage in plan.selected_stages):
         manifest = load_json(plan.manifest)
         if manifest.get("schema_version") != 1 or not manifest.get("sequences"):

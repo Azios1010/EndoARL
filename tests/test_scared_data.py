@@ -51,8 +51,13 @@ class ScaredManifestTests(unittest.TestCase):
             root = Path(directory)
             (root / "real").mkdir()
             (root / "real" / "target.npy").write_bytes(b"fixture")
-            (root / "alias").symlink_to(root / "real", target_is_directory=True)
-            (root / "real" / "linked.npy").symlink_to(root / "real" / "target.npy")
+            try:
+                (root / "alias").symlink_to(root / "real", target_is_directory=True)
+                (root / "real" / "linked.npy").symlink_to(root / "real" / "target.npy")
+            except OSError as exc:
+                if getattr(exc, 'winerror', None) == 1314:
+                    self.skipTest('Windows session lacks the privilege to create symlinks; validate this test on Linux/server')
+                raise
             cache = {}
             for name in ("alias/target.npy", "alias/linked.npy"):
                 self.assertEqual(_required_file(root, name, "target", cache), root / "real" / "target.npy")

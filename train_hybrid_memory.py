@@ -13,6 +13,7 @@ def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="configs/hybrid_memory.yaml")
     parser.add_argument("--manifest", help="Override strict local GT manifest path")
+    parser.add_argument('--supervision-manifest', help='Source-bound TRAIN-only valid-run manifest; --manifest stays the full evaluation source')
     parser.add_argument("--seed", type=int)
     parser.add_argument("--log-jsonl", help="Append actual training records; never writes during dry-run")
     execution = parser.add_mutually_exclusive_group()
@@ -27,8 +28,10 @@ def build_parser():
     parser.add_argument("--unfreeze-decoder", action="store_true")
     parser.add_argument("--unfreeze-heads", action="store_true")
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--total-steps", type=int, default=1000)
-    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--total-steps", type=int, help='Explicit positive optimizer-step ceiling; no default fitting budget')
+    parser.add_argument("--epochs", type=int, help='Explicit positive epoch ceiling; the first reached ceiling stops fitting')
+    parser.add_argument('--checkpoint-every', type=int, help='Save unvalidated candidates at fresh-clip boundaries after this many optimizer steps')
+    parser.add_argument('--checkpoint-dir', help='Fresh candidate output directory; requires --checkpoint-every')
     parser.add_argument("--output", default="checkpoints/hybrid_memory_t1.pt")
     parser.add_argument("--teacher-cache-dir", help="Optional prefix-aligned local teacher trace cache")
     parser.add_argument("--teacher-metadata", help="JSON containing verified teacher checkpoint/preprocessing/action hashes")
@@ -52,6 +55,8 @@ def main(argv=None):
         raw["uncertainty"]["enabled"] = False
     if args.manifest:
         raw["training"]["data_manifest"] = args.manifest
+    if args.supervision_manifest:
+        raw['training']['supervision_manifest'] = args.supervision_manifest
     if args.seed is not None:
         raw["training"]["seed"] = args.seed
     config = load_config(raw)
@@ -60,6 +65,17 @@ def main(argv=None):
     if config_value(config.policy, "long_write_policy") == "ppo":
         raise ValueError("Supervised attention training must disable PPO and use a deterministic write policy")
     requirements = validate_required_paths(config)
+    if bool(args.checkpoint_dir) != (args.checkpoint_every is not None):
+        raise ValueError('--checkpoint-dir and --checkpoint-every must be supplied together')
+    if args.checkpoint_every is not None and args.checkpoint_every < 1:
+        raise ValueError('--checkpoint-every must be positive')
+    for name in ('total_steps', 'epochs'):
+        value = getattr(args, name)
+        if value is not None and value < 1:
+            raise ValueError(f'--{name.replace("_", "-")} must be positive')
+    missing_budgets = [name for name in ('total_steps', 'epochs') if getattr(args, name) is None]
+    if not args.dry_run and missing_budgets:
+        raise ValueError('Training budget is unselected; supply explicit ' + ', '.join('--' + name.replace('_', '-') for name in missing_budgets))
     if args.resume_state and not args.resume_checkpoint:
         raise ValueError("--resume-state requires --resume-checkpoint")
     if args.stage != 't1' and not args.resume_checkpoint:
@@ -70,6 +86,10 @@ def main(argv=None):
               "backend": {"short": config.memory.short.backend, "long": config.memory.long.backend},
               "stage": args.stage, "requirements_ready": not requirements, "blocking_requirements": requirements,
               "seed": config.training.seed, "shuffle_sequences": config.training.shuffle_sequences,
+              'training_budgets': {'total_steps': args.total_steps, 'epochs': args.epochs},
+              'missing_training_budgets': missing_budgets,
+              'evaluation_manifest': config.training.data_manifest,
+              'supervision_manifest': config.training.supervision_manifest,
               "no_downloads": True, "no_installations": True,
               "server_validation": "SERVER_VALIDATION_REQUIRED: real kernel/model gradients, GT provenance, training fit"}
     teacher_metadata = None
@@ -89,9 +109,9 @@ def main(argv=None):
             teacher_metadata = {record['episode_id']: record for record in records}
         report["teacher_distillation"] = "optional_prefix_aligned_warm_start"
     if args.validate_data:
-        from dust3r.training.sequence_dataset import SequenceDataset
-        dataset = SequenceDataset(config.training.data_manifest,
-                                  image_hw=(config.training.image_height, config.training.image_width))
+        from dust3r.training.data import make_training_dataset
+        dataset, contract = make_training_dataset(config, sequence_raw_frames=config.training.sequence_raw_frames)
+        report['training_data_contract'] = contract
         report["dataset"] = dataset.validate_all()
     if args.validate_modules:
         import torch
@@ -108,20 +128,16 @@ def main(argv=None):
         return 0
     if requirements:
         raise FileNotFoundError("Training readiness failed:\n" + "\n".join(requirements))
-    if args.total_steps < 1 or args.epochs < 1:
-        raise ValueError("Explicit positive --total-steps and --epochs are required")
     from dust3r.training.hybrid_trainer import HybridTrainer, load_initialized_model
     from dust3r.training.reproducibility import seed_everything, sample_order, append_jsonl
-    from dust3r.training.sequence_dataset import SequenceDataset
+    from dust3r.training.data import make_training_dataset
     seed_everything(config.training.seed)
     model, hashes = load_initialized_model(config, args.device, args.trusted_checkpoints)
     if args.resume_checkpoint:
         from dust3r.training.hybrid_trainer import load_training_checkpoint
         load_training_checkpoint(args.resume_checkpoint, model)
     status = configure_trainable_parameters(model, args.stage, args.unfreeze_decoder, args.unfreeze_heads)
-    dataset = SequenceDataset(config.training.data_manifest, split="train",
-                              image_hw=(config.training.image_height, config.training.image_width),
-                              sequence_raw_frames=config.training.sequence_raw_frames, stride=config.training.stride)
+    dataset, data_contract = make_training_dataset(config, sequence_raw_frames=config.training.sequence_raw_frames)
     runner = model.make_online_runner(training=True)
     teacher_factory = None
     if teacher_metadata is not None:
@@ -140,13 +156,18 @@ def main(argv=None):
         payload = load_training_checkpoint(args.resume_checkpoint, model)
         if payload.get('stage') != args.stage:
             raise ValueError("Exact resume requires the same training stage; use weights-only stage adaptation otherwise")
+        if payload.get('training_data_contract') != data_contract:
+            raise ValueError('Exact resume training data/coverage/preprocessing changed or is unbound; use an explicitly named new run')
         load_training_checkpoint(args.resume_checkpoint, model, optimizer=trainer.optimizer,
                                  scheduler=trainer.scheduler, scaler=trainer.scaler, restore_rng=True)
         trainer.global_step = int(payload['global_step'])
         if trainer.global_step >= args.total_steps:
             raise ValueError("Resume step already meets --total-steps; increase the explicit total budget")
     print(json.dumps({**report, "parameter_status": status,
+                      'training_data_contract': data_contract,
                       "optimizer_groups": optimizer_group_summary(trainer.optimizer.param_groups)}, indent=2))
+    last_candidate_step = trainer.global_step
+    candidates = []
     for epoch in range(args.epochs):
         for sample_index in sample_order(len(dataset), config.training.seed, epoch,
                                         config.training.shuffle_sequences):
@@ -154,12 +175,23 @@ def main(argv=None):
             record = {"epoch": epoch, "sample": sample_index, "seed": config.training.seed, "windows": logs}
             print(json.dumps(record))
             append_jsonl(args.log_jsonl, record)
+            if args.checkpoint_every and trainer.global_step - last_candidate_step >= args.checkpoint_every:
+                candidate = Path(args.checkpoint_dir) / f'hybrid_step_{trainer.global_step:08d}.pt'
+                if candidate.exists():
+                    raise FileExistsError(f'Refusing to overwrite a validation candidate: {candidate}')
+                trainer.save_checkpoint(candidate, {'validated_for_ppo': False, 'reason': 'candidate requires held-out selection'}, hashes)
+                candidates.append({'global_step': trainer.global_step, 'checkpoint': str(candidate)})
+                last_candidate_step = trainer.global_step
             if trainer.global_step >= args.total_steps:
                 break
         if trainer.global_step >= args.total_steps:
             break
     # Unvalidated checkpoints are deliberately labelled; not PPO-eligible yet.
     trainer.save_checkpoint(args.output, {"validated_for_ppo": False, "reason": "run held-out server evaluation"}, hashes)
+    append_jsonl(args.log_jsonl, {'event': 'fit_complete', 'global_step': trainer.global_step,
+                                'step_ceiling_reached': trainer.global_step >= args.total_steps,
+                                'configured_epoch_ceiling': args.epochs, 'candidates': candidates,
+                                'final_checkpoint': args.output, 'validated_for_ppo': False})
     return 0
 
 

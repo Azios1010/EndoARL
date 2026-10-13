@@ -1,5 +1,12 @@
 # Paper-matched evaluation and the three-way attention comparison
 
+Operational instructions: [complete server workflow](SCARED_SERVER_FIT_GUIDE.md),
+[environment provisioning](SCARED_SERVER_ENVIRONMENT.md),
+[StereoAnything exporter/target contract](SCARED_STEREOANYTHING_LABEL_GUIDE.md),
+and [partial-GT scorer specification](SCARED_PARTIAL_GT_IMPLEMENTATION.md).
+Exporter/pseudo-target and partial-GT scoring support remain implementation gates;
+documentation does not establish that those branches can already run.
+
 The active catalog is `configs/experiments/scared_study.json`. Its measured
 comparison has exactly three branches:
 
@@ -88,6 +95,29 @@ guarantee valid GT after320×256 resampling. The known dataset2/keyframe4/frame1
 empty-target failure still blocks full fitting. Do not fill its GT, treat
 pseudo-depth as test GT or silently remove RGB frames from FPS denominators.
 
+The local coverage fix is now implemented in
+[`audit_scared_supervision.py`](../tools/audit_scared_supervision.py).
+It inventories all source frames using the loader's actual crop/resize/geometry
+validity and can produce a separate, source-bound TRAIN-only manifest of
+contiguous supervised runs. The full original manifest stays the scoring/FPS
+and PPO-certification identity. Training accepts `--supervision-manifest` as a
+separate target selection, saves both manifest hashes, and rejects unbound or
+changed-data exact resume. The default one-pixel threshold prevents empty-mask
+crashes; it does not establish a good training signal. Real-data inventory and
+supervision thresholds remain server requirements.
+
+[`select_hybrid_checkpoint.py`](../tools/select_hybrid_checkpoint.py) ranks
+identified validation reports, defaults to full validation, checks actual
+Flash/FLA plus the per-sequence quality gate, and creates a separately certified
+checkpoint only on explicit request. Attention training can save unvalidated
+candidate checkpoints at fresh-clip boundaries. Neither a completed smoke step
+nor choosing the best of a few candidates proves convergence.
+
+Follow the [server fitting guide](SCARED_SERVER_FIT_GUIDE.md) for the coverage,
+selection and StereoAnything-label work. Genuine-GT provenance requirements
+currently prevent using pseudo-depth as a drop-in fake GT target; a separate
+training target-kind/export contract is still required for that recipe.
+
 ## Budget selection and execution
 
 Attention steps, attention epochs and PPO updates default to **null**, not a
@@ -97,6 +127,9 @@ budget placeholders. Before executing selected fitting stages, pass
 positive budget. Execution validates those budgets before starting any process.
 Evaluation-only stages do not require a new training budget when the required
 certified checkpoints/actor already exist.
+Standalone `train_hybrid_memory.py` and `train_rl_controller.py` also require
+explicit fitting budgets; dry runs report them as missing rather than silently
+choosing the former smoke defaults.
 
 ```bash
 # Read-only review: no optimization or model inference.

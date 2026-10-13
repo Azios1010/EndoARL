@@ -8,6 +8,9 @@ rgb, valid_mask (or an explicitly verified target-validity rule), intrinsics
 depth_scale, or pointmap plus pointmap_space (camera/world/first_camera).
 Paths are relative to the manifest directory unless absolute. There are no
 identity-pose, unit-depth, or calibration fallbacks.
+Derived training intervals that retain first_camera pointmap files declare
+first_camera_origin_camera_to_world, preserving the original file coordinate
+origin even when their first selected frame differs from the source sequence.
 Depth files may explicitly declare depth_encoding=rectified_disparity with
 stereo_baseline_m and right_principal_x; u_left-u_right disparity is decoded
 to metres on the source rectified grid before the shared crop/resize.
@@ -53,7 +56,9 @@ class StreamingSequenceSample:
     """CPU-resident metadata plus one decoded frame cache, independent of video length.
 
     Call ``get_frame(i)`` for an aligned ``(frame, target)`` pair. The coordinate
-    origin is the first selected frame (including clips and stride selection).
+    output origin is the first selected frame (including clips and stride
+    selection). Stored first_camera targets can declare their original file
+    origin separately with first_camera_origin_camera_to_world.
     Never move the complete views to CUDA; move each returned pair instead.
     """
     def __init__(self, dataset, index):
@@ -65,7 +70,10 @@ class StreamingSequenceSample:
         self.provenance = dict(self.sequence["provenance"])
         self.frame_count = len(self.entries)
         self.first_pose = _matrix(self.entries[0]["camera_to_world"], (4, 4), "camera_to_world")
-        self.original_first_pose = _matrix(self.sequence["frames"][0]["camera_to_world"], (4, 4), "camera_to_world")
+        self.original_first_pose = _matrix(
+            self.sequence.get("first_camera_origin_camera_to_world",
+                              self.sequence["frames"][0]["camera_to_world"]),
+            (4, 4), "camera_to_world")
         self._cached_index, self._cached_pair = None, None
         self.frames, self.targets = _StreamingView(self, 0), _StreamingView(self, 1)
 
@@ -191,6 +199,8 @@ class SequenceDataset(Dataset):
             if not isinstance(sequence.get(key), str) or not sequence[key]:
                 raise ValueError(f"Every sequence requires nonempty {key}")
         provenance = sequence.get("provenance", {})
+        if "first_camera_origin_camera_to_world" in sequence:
+            _matrix(sequence["first_camera_origin_camera_to_world"], (4, 4), "camera_to_world")
         for key in ("verified", "depth_or_pointmap_gt", "calibration_gt", "pose_gt"):
             if provenance.get(key) is not True:
                 raise ValueError(f"Real GT provenance requires {key}=true; placeholders are forbidden")
@@ -258,15 +268,40 @@ class SequenceDataset(Dataset):
         with Image.open(path) as image:
             return torch.from_numpy(np.asarray(image).copy())
 
-    def _preprocess(self, rgb, depth_or_points, mask, intrinsics):
+    def _crop_bounds(self, input_hw):
+        """Return the exact loader crop (top, left, height, width)."""
+        in_h, in_w = input_hw
+        if self.image_hw is None or tuple(input_hw) == self.image_hw:
+            return 0, 0, in_h, in_w
+        out_h, out_w = self.image_hw
+        ratio = out_w / out_h
+        crop_w, crop_h = (round(in_h * ratio), in_h) if in_w / in_h > ratio else (in_w, round(in_w / ratio))
+        return (in_h - crop_h) // 2, (in_w - crop_w) // 2, crop_h, crop_w
+
+    @staticmethod
+    def _record_coverage(trace, name, mask):
+        count, total = int(mask.sum()), mask.numel()
+        trace[name] = {"valid_pixels": count, "total_pixels": total,
+                       "valid_fraction": count / total if total else 0.,
+                       "image_hw": list(mask.shape)}
+
+    def _preprocess(self, rgb, depth_or_points, mask, intrinsics,
+                    coverage_trace=None, native_valid_mask=None):
         """Joint crop/resize; GT nearest-exact, RGB bilinear, half-pixel K."""
+        top, left, crop_h, crop_w = self._crop_bounds(rgb.shape[:2])
+        if coverage_trace is not None:
+            cropped = native_valid_mask[top:top + crop_h, left:left + crop_w]
+            self._record_coverage(coverage_trace, "cropped", cropped)
+            coverage_trace["crop_tlhw"] = [top, left, crop_h, crop_w]
+            if self.image_hw is not None and tuple(rgb.shape[:2]) != self.image_hw:
+                resized = F.interpolate(cropped[None, None].float(), self.image_hw,
+                                        mode="nearest-exact")[0, 0].bool()
+            else:
+                resized = cropped
+            self._record_coverage(coverage_trace, "resized", resized)
         if self.image_hw is None or tuple(rgb.shape[:2]) == self.image_hw:
             return rgb, depth_or_points, mask, intrinsics
         out_h, out_w = self.image_hw
-        in_h, in_w = rgb.shape[:2]
-        ratio = out_w / out_h
-        crop_w, crop_h = (round(in_h * ratio), in_h) if in_w / in_h > ratio else (in_w, round(in_w / ratio))
-        left, top = (in_w - crop_w) // 2, (in_h - crop_h) // 2
         rgb = rgb[top:top + crop_h, left:left + crop_w]
         depth_or_points = depth_or_points[top:top + crop_h, left:left + crop_w]
         mask = mask[top:top + crop_h, left:left + crop_w]
@@ -287,7 +322,30 @@ class SequenceDataset(Dataset):
         intrinsics[1, 2] += 0.5 * sy - 0.5
         return rgb, depth_or_points, mask, intrinsics
 
-    def _load_frame(self, sequence, entry, start, frame_index, first_pose, original_first_pose):
+    def _target_geometry(self, key, entry, values, mask, intrinsics, pose, first_pose,
+                         original_first_pose):
+        """Shared calibrated geometry/validity for loading and coverage inspection."""
+        if key == "depth":
+            safe_depth = torch.where(mask, values, torch.zeros_like(values))
+            points = backproject_common_frame(safe_depth, intrinsics, pose, first_pose)
+            depth = values
+        else:
+            if entry["pointmap_space"] == "camera":
+                transform = torch.linalg.solve(first_pose, pose)
+            elif entry["pointmap_space"] == "world":
+                transform = torch.linalg.inv(first_pose)
+            else:
+                transform = torch.linalg.solve(first_pose, original_first_pose)
+            points = values @ transform[:3, :3].T + transform[:3, 3]
+            camera_transform = torch.linalg.solve(pose, first_pose)
+            camera_points = points @ camera_transform[:3, :3].T + camera_transform[:3, 3]
+            depth = camera_points[..., 2]
+        mask = mask & torch.isfinite(points).all(dim=-1)
+        mask &= torch.isfinite(depth) & (depth > 0)
+        return points, depth, mask
+
+    def _load_frame(self, sequence, entry, start, frame_index, first_pose, original_first_pose,
+                    coverage_trace=None, allow_empty_gt=False):
         rgb = self._array(self._path(entry["rgb"]))
         if rgb.ndim != 3 or rgb.shape[-1] < 3:
             raise ValueError("RGB files must decode to HxWx3 images")
@@ -332,27 +390,18 @@ class SequenceDataset(Dataset):
             raise ValueError("Dense pointmap GT must have HxWx3 shape")
         else:
             values = values * float(entry.get("pointmap_scale", 1.))
-        rgb, values, mask, intrinsics = self._preprocess(rgb, values, mask, intrinsics)
-        if key == "depth":
-            safe_depth = torch.where(mask, values, torch.zeros_like(values))
-            points = backproject_common_frame(safe_depth, intrinsics, pose, first_pose)
-            depth = values
-        else:
-            if entry["pointmap_space"] == "camera":
-                transform = torch.linalg.solve(first_pose, pose)
-            elif entry["pointmap_space"] == "world":
-                transform = torch.linalg.inv(first_pose)
-            else:
-                transform = torch.linalg.solve(first_pose, original_first_pose)
-            points = values @ transform[:3, :3].T + transform[:3, 3]
-            # XYZ GT in a world/first-camera frame still defines metric
-            # depth in the current optical camera, using calibrated pose.
-            camera_transform = torch.linalg.solve(pose, first_pose)
-            camera_points = points @ camera_transform[:3, :3].T + camera_transform[:3, 3]
-            depth = camera_points[..., 2]
-        mask &= torch.isfinite(points).all(dim=-1)
-        mask &= torch.isfinite(depth) & (depth > 0)
-        if not mask.any():
+        native_valid = None
+        if coverage_trace is not None:
+            _, _, native_valid = self._target_geometry(
+                key, entry, values, mask, intrinsics, pose, first_pose, original_first_pose)
+            self._record_coverage(coverage_trace, "raw", native_valid)
+        rgb, values, mask, intrinsics = self._preprocess(
+            rgb, values, mask, intrinsics, coverage_trace, native_valid)
+        points, depth, mask = self._target_geometry(
+            key, entry, values, mask, intrinsics, pose, first_pose, original_first_pose)
+        if coverage_trace is not None:
+            self._record_coverage(coverage_trace, "final", mask)
+        if not mask.any() and not allow_empty_gt:
             raise ValueError(f"Missing real GT coverage: {sequence['id']} frame {frame_index}")
         height, width = rgb.shape[:2]
         image_origin = rgb.permute(2, 0, 1)[None]
